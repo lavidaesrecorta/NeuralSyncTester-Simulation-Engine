@@ -265,9 +265,16 @@ func insertIntoDB(db *sql.DB, config TPMConfig, session tpm_sync.SessionData, st
 	weightsJSON, err := json.Marshal(session.FinalWeights)
 	if err != nil {
 		fmt.Println(fmt.Errorf("failed to marshal K: %v", err))
+
 	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = os.Getenv("HOSTNAME")
+	}
+
 	sqlData := map[string]interface{}{
-		"host":                 os.Getenv("HOSTNAME"),
+		"host":                 hostname,
 		"k":                    string(kJSON),
 		"n_0":                  config.N_0,
 		"l":                    config.L,
