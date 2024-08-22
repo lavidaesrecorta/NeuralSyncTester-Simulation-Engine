@@ -1,0 +1,23 @@
+version: '3.8'
+services: 
+  database:
+    image: mysql:lts
+    restart: always
+    environment:
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_RANDOM_ROOT_PASSWORD: true 
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mysql/db/:/var/lib/mysql/
+    ports:
+      - "3306:3306"
+  
+  # simulation_service:
+  #   image: tpm_go_simulation:latest
+  #   env_file:
+  #       - .env
+  #   ports:
+  #   depends_on:
+  #     - database

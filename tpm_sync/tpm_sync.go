@@ -1,7 +1,6 @@
 package tpm_sync
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 )
@@ -15,7 +14,14 @@ type Iteration struct {
 	NetworkOutput int
 }
 
-func SyncSession(K []int, N []int, L int, M int, TpmType string, LearnRule string) {
+type SessionData struct {
+	StimulateIterations int
+	LearnIterations     int
+	FinalWeights        [][][]int
+	Status              string
+}
+
+func SyncSession(K []int, N []int, L int, M int, TpmType string, LearnRule string, maxIterations int) SessionData {
 	h := len(K)
 	weights_a := make([][][]int, h)
 	weights_b := make([][][]int, h)
@@ -29,6 +35,15 @@ func SyncSession(K []int, N []int, L int, M int, TpmType string, LearnRule strin
 	learn_iterations := 0
 
 	for !CompareWeights(h, K, N, weights_a, weights_b) {
+
+		if total_iterations > maxIterations && maxIterations != 0 {
+			return SessionData{
+				StimulateIterations: total_iterations,
+				LearnIterations:     learn_iterations,
+				FinalWeights:        weights_a,
+				Status:              "LIMIT_REACHED",
+			}
+		}
 
 		//setup input/output
 		stim_a := stim
@@ -67,7 +82,12 @@ func SyncSession(K []int, N []int, L int, M int, TpmType string, LearnRule strin
 		}
 		stim = createRandomStimulusArray(K[0], N[0], M)
 	}
-
+	return SessionData{
+		StimulateIterations: total_iterations,
+		LearnIterations:     learn_iterations,
+		FinalWeights:        weights_a,
+		Status:              "FINISHED",
+	}
 }
 
 func CompareWeights(h int, k []int, n []int, weights_a [][][]int, weights_b [][][]int) bool {
@@ -81,7 +101,6 @@ func CompareWeights(h int, k []int, n []int, weights_a [][][]int, weights_b [][]
 		}
 	}
 
-	fmt.Println("Synchronization finished.")
 	return true
 }
 
