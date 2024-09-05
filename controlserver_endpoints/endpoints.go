@@ -234,7 +234,7 @@ func CreateSimulationSession(MaxSessionCount int, config TPMConfig, N []int, db 
 		CurrentSessionCount: 0,
 	}
 
-	sessionMap[token] = &simulationData
+	// sessionMap[token] = &simulationData
 
 	for simulation := 0; simulation < MaxSessionCount; simulation++ {
 		sessionStartTime, _ := getCurrentTimeFromNTP()
