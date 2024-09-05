@@ -158,34 +158,38 @@ func simulateOnStart(db *sql.DB) {
 
 	for i := range neuronConfigs {
 
-		n_0, err := strconv.Atoi(os.Getenv("DEFAULT_N_0"))
-		if err != nil {
-			n_0 = 5
-		}
-		N := tpm_sync.CreateConvolutionalStimulusStructure(neuronConfigs[i], n_0)
-		if N == nil {
-			fmt.Println("Invalid layer structure")
-			return
-		}
-
-		m, err := strconv.Atoi(os.Getenv("DEFAULT_M"))
-		if err != nil {
-			m = 5
-		}
-		for j := range lConfigs {
-
-			tpmCfg := TPMConfig{
-				K:         neuronConfigs[i],
-				N_0:       n_0,
-				L:         lConfigs[j],
-				M:         m,
-				TpmType:   os.Getenv("DEFAULT_TYPE"),
-				LearnRule: os.Getenv("DEFAULT_RULE"),
+		// n_0, err := strconv.Atoi(os.Getenv("DEFAULT_N_0"))
+		// if err != nil {
+		// 	n_0 = 5
+		// }
+		nConfigs := []int{2, 3, 4, 5, 6, 7, 8, 9}
+		for n_index := range nConfigs {
+			n_0 := nConfigs[n_index]
+			N := tpm_sync.CreateConvolutionalStimulusStructure(neuronConfigs[i], n_0)
+			if N == nil {
+				fmt.Println("Invalid layer structure")
+				return
 			}
 
-			CreateSimulationSession(maxSessionCount, tpmCfg, N, db)
+			m, err := strconv.Atoi(os.Getenv("DEFAULT_M"))
+			if err != nil {
+				m = 5
+			}
+			for j := range lConfigs {
+
+				tpmCfg := TPMConfig{
+					K:         neuronConfigs[i],
+					N_0:       n_0,
+					L:         lConfigs[j],
+					M:         m,
+					TpmType:   os.Getenv("DEFAULT_TYPE"),
+					LearnRule: os.Getenv("DEFAULT_RULE"),
+				}
+
+				CreateSimulationSession(maxSessionCount, tpmCfg, N, db)
+			}
+			fmt.Println("Config finished:", neuronConfigs[i], "N_0:", n_0)
 		}
-		fmt.Println("Config finished:", neuronConfigs[i])
 	}
 	selectQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", os.Getenv("DB_NAME"))
 
