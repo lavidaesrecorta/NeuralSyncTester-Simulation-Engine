@@ -1,8 +1,10 @@
 package tpm_sync
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 )
 
 // import "fmt"
@@ -21,71 +23,122 @@ type SessionData struct {
 	Status              string
 }
 
-func SyncSession(K []int, N []int, L int, M int, TpmType string, LearnRule string, maxIterations int) SessionData {
-	h := len(K)
+func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule string) (TPMmSettings, error) {
+
+	var stimHandler TPMStimulationHandlers
+	var ruleHandler TPMLearnRuleHandler
+
+	switch parsed_tpmType := strings.ToUpper(tpmType); parsed_tpmType {
+	case "PARTIALLY_CONNECTED":
+		stimHandler = PartialConnectionTPM{}
+	}
+	if stimHandler == nil && ruleHandler == nil {
+		return TPMmSettings{}, fmt.Errorf("TPM type is invalid: %s", tpmType)
+	}
+
+	switch parsed_learnRule := strings.ToUpper(learnRule); parsed_learnRule {
+	case "HEBBIAN":
+		ruleHandler = HebbianLearnRule{}
+	}
+	if ruleHandler == nil {
+		return TPMmSettings{}, fmt.Errorf("TPM rule is invalid: %s", learnRule)
+	}
+
+	N := stimHandler.CreateStimulationStructure(K, n_0)
+
+	return TPMmSettings{
+		K:                   K,
+		N:                   N,
+		L:                   l,
+		M:                   l,
+		learnRuleHandler:    ruleHandler,
+		stimulationHandlers: stimHandler,
+	}, nil
+}
+
+func InitializeSession(tpmSettings TPMmSettings) TPMmSessionState {
+	h := len(tpmSettings.K)
 	weights_a := make([][][]int, h)
 	weights_b := make([][][]int, h)
 	for layer := 0; layer < h; layer++ {
-		weights_a[layer] = createRandomLayerWeightsArray(K[layer], N[layer], L)
-		weights_b[layer] = createRandomLayerWeightsArray(K[layer], N[layer], L)
+		weights_a[layer] = createRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L)
+		weights_b[layer] = createRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L)
 	}
-	stim := createRandomStimulusArray(K[0], N[0], M)
+	stim := createRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M)
+	layer_stim_a := make([][][]int, h)
+	layer_stim_b := make([][][]int, h)
+	outputs_a := make([][]int, h)
+	outputs_b := make([][]int, h)
 
+	return TPMmSessionState{
+		stimulus:         stim,
+		layer_stimulus_a: layer_stim_a,
+		layer_stimulus_b: layer_stim_b,
+		Weights_A:        weights_a,
+		Weights_B:        weights_b,
+		Outputs_A:        outputs_a,
+		Outputs_B:        outputs_b,
+	}
+}
+
+func SyncSession(tpmSettings TPMmSettings, maxIterations int) SessionData {
+
+	//setup simulation
+	h := len(tpmSettings.K)
+	sessionState := InitializeSession(tpmSettings)
+	fmt.Println("A_0:", sessionState.Weights_A)
+	fmt.Println("B_0:", sessionState.Weights_B)
+	fmt.Println("----------------------------")
+	//Start simulation
 	total_iterations := 0
 	learn_iterations := 0
+	for !CompareWeights(h, tpmSettings.K, tpmSettings.N, sessionState.Weights_A, sessionState.Weights_B) {
 
-	for !CompareWeights(h, K, N, weights_a, weights_b) {
-
+		//Health Check: has the simulation has been running for too long?
 		if total_iterations > maxIterations && maxIterations != 0 {
 			return SessionData{
 				StimulateIterations: total_iterations,
 				LearnIterations:     learn_iterations,
-				FinalWeights:        weights_a,
+				FinalWeights:        sessionState.Weights_A,
 				Status:              "LIMIT_REACHED",
 			}
 		}
 
-		//setup input/output
-		stim_a := stim
-		stim_b := stim
-		outputs_a := make([][]int, h)
-		outputs_b := make([][]int, h)
+		//Setup first layer, next layers will be calculated on the stimulation process
+		sessionState.layer_stimulus_a[0] = sessionState.stimulus
+		sessionState.layer_stimulus_b[0] = sessionState.stimulus
 
-		//Stimulate layers
-		for layer := 0; layer < h; layer++ {
-			outputs_a[layer] = stimulateLayer(stim_a, weights_a[layer], K[layer], N[layer])
-			outputs_b[layer] = stimulateLayer(stim_b, weights_b[layer], K[layer], N[layer])
-			if layer+1 < h {
-				stim_a = createOverlappedStimulusFromOutput(outputs_a[layer], K[layer+1], N[layer+1]) //Stimulus are created for each neuron of the NEXT layer
-				stim_b = createOverlappedStimulusFromOutput(outputs_b[layer], K[layer+1], N[layer+1])
-			}
+		//Stimulate layers, stimulate the last layer separate from the rest to avoid creating unnecesary stimulus arrays
+		for layer := 0; layer < h-1; layer++ {
+			sessionState.Outputs_A[layer] = stimulateLayer(sessionState.layer_stimulus_a[layer], sessionState.Weights_A[layer], tpmSettings.K[layer], tpmSettings.N[layer])
+			sessionState.Outputs_B[layer] = stimulateLayer(sessionState.layer_stimulus_b[layer], sessionState.Weights_B[layer], tpmSettings.K[layer], tpmSettings.N[layer])
+			sessionState.layer_stimulus_a[layer+1] = tpmSettings.stimulationHandlers.CreateStimulusFromLayerOutput(sessionState.Outputs_A[layer], tpmSettings.K[layer+1], tpmSettings.N[layer+1])
+			sessionState.layer_stimulus_b[layer+1] = tpmSettings.stimulationHandlers.CreateStimulusFromLayerOutput(sessionState.Outputs_B[layer], tpmSettings.K[layer+1], tpmSettings.N[layer+1])
 		}
-		final_output_a := thau(outputs_a[h-1], K[h-1])
-		final_output_b := thau(outputs_b[h-1], K[h-1])
+		sessionState.Outputs_A[h-1] = stimulateLayer(sessionState.layer_stimulus_a[h-1], sessionState.Weights_A[h-1], tpmSettings.K[h-1], tpmSettings.N[h-1])
+		sessionState.Outputs_B[h-1] = stimulateLayer(sessionState.layer_stimulus_b[h-1], sessionState.Weights_B[h-1], tpmSettings.K[h-1], tpmSettings.N[h-1])
+		final_output_a := thau(sessionState.Outputs_A[h-1], tpmSettings.K[h-1])
+		final_output_b := thau(sessionState.Outputs_B[h-1], tpmSettings.K[h-1])
 		total_iterations += 1
 
 		//Check if we need to learn in this iteration
 		if final_output_a == final_output_b {
-			stim_a = stim
-			stim_b = stim
 			for layer := 0; layer < h; layer++ {
-				learn_layer(K[layer], N[layer], L, weights_a[layer], stim_a, outputs_a[layer], final_output_a, final_output_b)
-				learn_layer(K[layer], N[layer], L, weights_b[layer], stim_b, outputs_b[layer], final_output_b, final_output_a)
-
-				if layer+1 < h {
-					stim_a = createOverlappedStimulusFromOutput(outputs_a[layer], K[layer+1], N[layer+1]) //Stimulus are created for each neuron of the NEXT layer
-					stim_b = createOverlappedStimulusFromOutput(outputs_b[layer], K[layer+1], N[layer+1])
-				}
-
+				tpmSettings.learnRuleHandler.TPMLearnLayer(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, sessionState.Weights_A[layer], sessionState.layer_stimulus_a[layer], sessionState.Outputs_A[layer], final_output_a, final_output_b)
+				tpmSettings.learnRuleHandler.TPMLearnLayer(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, sessionState.Weights_B[layer], sessionState.layer_stimulus_b[layer], sessionState.Outputs_B[layer], final_output_b, final_output_a)
 			}
 			learn_iterations += 1
 		}
-		stim = createRandomStimulusArray(K[0], N[0], M)
+		sessionState.stimulus = createRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M)
 	}
+
+	fmt.Println("A:", sessionState.Weights_A)
+	fmt.Println("B:", sessionState.Weights_B)
+	fmt.Println("++++++++++++++++++++++++++++")
 	return SessionData{
 		StimulateIterations: total_iterations,
 		LearnIterations:     learn_iterations,
-		FinalWeights:        weights_a,
+		FinalWeights:        sessionState.Weights_A,
 		Status:              "FINISHED",
 	}
 }
@@ -145,6 +198,7 @@ func heavisideStep(x int) int {
 	}
 	return 0
 }
+
 func gFunction(w int, l int) int {
 	sign := 1
 	if w < 0 {
@@ -167,19 +221,6 @@ func stimulateLayer(stimu [][]int, weights [][]int, k int, n int) []int {
 	}
 
 	return layerOutputs
-
-}
-
-// learn_layer:
-func learn_layer(k int, n int, l int, weights [][]int, stimulus [][]int, outputs []int, output_a int, output_b int) {
-	for i := 0; i < k; i++ {
-		for j := 0; j < n; j++ {
-			newWeight := weights[i][j] + stimulus[i][j]*output_a*heavisideStep(outputs[i]*output_a)*heavisideStep(output_a*output_b)
-			weights[i][j] = gFunction(newWeight, l)
-
-		}
-	}
-
 }
 
 func createRandomStimulusArray(k int, n int, m int) [][]int {
