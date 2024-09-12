@@ -2,7 +2,7 @@ version: '3.8'
 services: 
   database:
     image: mysql:lts
-    # restart: always
+    restart: always
     environment:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
@@ -13,11 +13,17 @@ services:
       - ./mysql/db/:/var/lib/mysql/
     ports:
       - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h127.0.0.1", "-uroot", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
   
-  # simulation_service:
-  #   image: tpm_go_simulation:latest
-  #   env_file:
-  #       - .env
-  #   ports:
-  #   depends_on:
-  #     - database
+  simulation_service:
+    image: tpm_simulation_service:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      database:
+        condition: service_healthy
