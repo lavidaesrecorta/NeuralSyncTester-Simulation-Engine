@@ -1,19 +1,36 @@
 package tpm_sync
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/beevik/ntp"
 	"github.com/sourcegraph/conc/pool"
 )
 
-func SimulateOnStart(db *sql.DB, seed int64) {
+type OpenSession struct {
+	Uid                 string
+	Config              TPMmSettings
+	StartTime           time.Time
+	MaxSessionCount     int
+	CurrentSessionCount int
+}
 
+type SessionMap struct {
+	sessions map[string]*OpenSession
+	mutex    sync.Mutex
+}
+
+func SimulateOnStart(db *sql.DB, seed int64, sessionMap SessionMap) {
+
+	max_session_count := 5000
 	max_iterations := 100_000
 	max_threads := 3
 
@@ -65,18 +82,39 @@ func SimulateOnStart(db *sql.DB, seed int64) {
 							if err != nil {
 								continue
 							}
+
 							workerPool.Go(func() {
 								startTime, ntpErr := getCurrentTimeFromNTP()
 								if ntpErr != nil {
 									startTime = time.Now()
 								}
-								session := SyncSession(tpmSettings, max_iterations, seed)
-								endTime, ntpErr := getCurrentTimeFromNTP()
-								if ntpErr != nil {
-									endTime = time.Now()
+								token := generateToken(startTime, tpmSettings)
+								simulationData := OpenSession{
+									Uid:                 token,
+									Config:              tpmSettings,
+									StartTime:           startTime,
+									MaxSessionCount:     max_session_count,
+									CurrentSessionCount: 0,
 								}
-								insertIntoDB(db, tpmSettings, session, startTime, endTime)
-								fmt.Println(session.Status)
+								sessionMap.sessions[token] = &simulationData
+
+								for i := 0; i < max_session_count; i++ {
+
+									startTime, ntpErr = getCurrentTimeFromNTP()
+									if ntpErr != nil {
+										startTime = time.Now()
+									}
+									session := SyncSession(tpmSettings, max_iterations, seed)
+
+									endTime, ntpErr := getCurrentTimeFromNTP()
+									if ntpErr != nil {
+										endTime = time.Now()
+									}
+									insertIntoDB(db, tpmSettings, session, startTime, endTime)
+								}
+								sessionMap.mutex.Lock()
+								delete(sessionMap.sessions, token)
+								sessionMap.mutex.Unlock()
 							})
 							// fmt.Println(session.FinalWeights)
 						}
@@ -147,4 +185,12 @@ func insertIntoDB(db *sql.DB, config TPMmSettings, session SessionData, startTim
 	if err != nil {
 		fmt.Println(fmt.Errorf("failed to insert data into MySQL: %v", err))
 	}
+}
+
+func generateToken(startTime time.Time, config TPMmSettings) string {
+	idStamp := fmt.Sprintf("%v%d%d%d%s", config.K, config.N[0], config.L, config.M, startTime)
+	h := sha256.New()
+	h.Write([]byte(idStamp))
+	token := hex.EncodeToString(h.Sum(nil))
+	return token
 }

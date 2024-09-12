@@ -34,7 +34,7 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 	case "PARTIALLY_CONNECTED":
 		stimHandler = PartialConnectionTPM{}
 	}
-	if stimHandler == nil && ruleHandler == nil {
+	if stimHandler == nil {
 		return TPMmSettings{}, fmt.Errorf("TPM type is invalid: %s", tpmType)
 	}
 
