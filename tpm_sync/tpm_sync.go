@@ -91,9 +91,6 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localR
 	h := len(tpmSettings.K)
 	sessionState := InitializeSession(tpmSettings, localRand)
 	initialState := sessionState
-	fmt.Println("A_0:", sessionState.Weights_A)
-	fmt.Println("B_0:", sessionState.Weights_B)
-	fmt.Println("----------------------------")
 	//Start simulation
 	total_iterations := 0
 	learn_iterations := 0
@@ -138,10 +135,6 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localR
 		}
 		sessionState.Stimulus = CreateRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M, localRand)
 	}
-
-	fmt.Println("A:", sessionState.Weights_A)
-	fmt.Println("B:", sessionState.Weights_B)
-	fmt.Println("++++++++++++++++++++++++++++")
 	return SessionData{
 		Seed:                seed,
 		StimulateIterations: total_iterations,

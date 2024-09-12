@@ -31,9 +31,9 @@ type SessionMap struct {
 
 func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 
-	max_session_count := 10
-	max_iterations := 100_000
-	max_threads := 3
+	max_session_count := 5000
+	max_iterations := 7_000_000
+	max_threads := 4
 
 	neuronConfigs := [][]int{
 		{3},
@@ -72,7 +72,6 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 	}
 
 	workerPool := pool.New().WithMaxGoroutines(max_threads)
-
 	for _, tpm_type := range tpmTypes {
 		for _, rule := range learnRules {
 			for _, k := range neuronConfigs {

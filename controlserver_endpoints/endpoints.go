@@ -40,6 +40,7 @@ func main() {
 		sessionHandler(w, r, sessionMap)
 	})
 
+	fmt.Println("Starting simulation...")
 	go tpm_sync.SimulateOnStart(db, sessionMap)
 
 	http.ListenAndServe(":8080", nil)
