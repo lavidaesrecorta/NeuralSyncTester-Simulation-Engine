@@ -17,9 +17,11 @@ type Iteration struct {
 }
 
 type SessionData struct {
+	Seed                int64
 	StimulateIterations int
 	LearnIterations     int
-	FinalWeights        [][][]int
+	InitialState        TPMmSessionState
+	FinalState          TPMmSessionState
 	Status              string
 }
 
@@ -50,7 +52,9 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 		K:                   K,
 		N:                   N,
 		L:                   l,
-		M:                   l,
+		M:                   m,
+		LearnRule:           learnRule,
+		LinkType:            tpmType,
 		learnRuleHandler:    ruleHandler,
 		stimulationHandlers: stimHandler,
 	}, nil
@@ -71,7 +75,7 @@ func InitializeSession(tpmSettings TPMmSettings) TPMmSessionState {
 	outputs_b := make([][]int, h)
 
 	return TPMmSessionState{
-		stimulus:         stim,
+		Stimulus:         stim,
 		layer_stimulus_a: layer_stim_a,
 		layer_stimulus_b: layer_stim_b,
 		Weights_A:        weights_a,
@@ -81,11 +85,12 @@ func InitializeSession(tpmSettings TPMmSettings) TPMmSessionState {
 	}
 }
 
-func SyncSession(tpmSettings TPMmSettings, maxIterations int) SessionData {
+func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64) SessionData {
 
 	//setup simulation
 	h := len(tpmSettings.K)
 	sessionState := InitializeSession(tpmSettings)
+	initialState := sessionState
 	fmt.Println("A_0:", sessionState.Weights_A)
 	fmt.Println("B_0:", sessionState.Weights_B)
 	fmt.Println("----------------------------")
@@ -97,16 +102,18 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int) SessionData {
 		//Health Check: has the simulation has been running for too long?
 		if total_iterations > maxIterations && maxIterations != 0 {
 			return SessionData{
+				Seed:                seed,
 				StimulateIterations: total_iterations,
 				LearnIterations:     learn_iterations,
-				FinalWeights:        sessionState.Weights_A,
+				InitialState:        initialState,
+				FinalState:          sessionState,
 				Status:              "LIMIT_REACHED",
 			}
 		}
 
 		//Setup first layer, next layers will be calculated on the stimulation process
-		sessionState.layer_stimulus_a[0] = sessionState.stimulus
-		sessionState.layer_stimulus_b[0] = sessionState.stimulus
+		sessionState.layer_stimulus_a[0] = sessionState.Stimulus
+		sessionState.layer_stimulus_b[0] = sessionState.Stimulus
 
 		//Stimulate layers, stimulate the last layer separate from the rest to avoid creating unnecesary stimulus arrays
 		for layer := 0; layer < h-1; layer++ {
@@ -129,16 +136,17 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int) SessionData {
 			}
 			learn_iterations += 1
 		}
-		sessionState.stimulus = createRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M)
+		sessionState.Stimulus = createRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M)
 	}
 
 	fmt.Println("A:", sessionState.Weights_A)
 	fmt.Println("B:", sessionState.Weights_B)
 	fmt.Println("++++++++++++++++++++++++++++")
 	return SessionData{
+		Seed:                seed,
 		StimulateIterations: total_iterations,
-		LearnIterations:     learn_iterations,
-		FinalWeights:        sessionState.Weights_A,
+		InitialState:        initialState,
+		FinalState:          sessionState,
 		Status:              "FINISHED",
 	}
 }

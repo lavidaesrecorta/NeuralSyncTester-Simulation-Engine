@@ -1,7 +1,7 @@
 package tpm_sync
 
 type TPMmSessionState struct {
-	stimulus         [][]int
+	Stimulus         [][]int
 	layer_stimulus_a [][][]int
 	layer_stimulus_b [][][]int
 	Weights_A        [][][]int
@@ -15,6 +15,8 @@ type TPMmSettings struct {
 	N                   []int
 	L                   int
 	M                   int
+	LearnRule           string
+	LinkType            string
 	stimulationHandlers TPMStimulationHandlers
 	learnRuleHandler    TPMLearnRuleHandler
 }
