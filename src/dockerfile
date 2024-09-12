@@ -35,7 +35,6 @@ WORKDIR /app
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/controlserver_endpoints/tpm_controlserver .
-COPY ../.env ../
 RUN ls -al .
 
 # Expose the port your app uses (change if needed)

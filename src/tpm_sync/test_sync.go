@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"runtime"
@@ -29,55 +30,55 @@ type SessionMap struct {
 	Mutex    sync.RWMutex
 }
 
+type SimulationSettings struct {
+	MaxSessionCount int      `json:"max_session_count"`
+	MaxIterations   int      `json:"max_iterations"`
+	MaxWorkerCount  int      `json:"max_worker_count"`
+	KConfigs        [][]int  `json:"k_configs"`
+	NConfigs        []int    `json:"n_configs"`
+	MConfigs        []int    `json:"m_configs"`
+	LConfigs        []int    `json:"l_configs"`
+	TpmTypes        []string `json:"tpm_types"`
+	LearnRules      []string `json:"learn_rules"`
+}
+
+// Function to read and deserialize JSON file
+func LoadSimulationSettings(filename string) (*SimulationSettings, error) {
+	// Read the JSON file
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Create an instance of SimulationSettings
+	var settings SimulationSettings
+
+	// Unmarshal JSON data into the struct
+	err = json.Unmarshal(data, &settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	return &settings, nil
+}
+
 func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 
-	max_session_count := 5000
-	max_iterations := 7_000_000
-	max_threads := 4
-
-	neuronConfigs := [][]int{
-		{3},
-		{5, 3},
-		{7, 5, 3},
-		{13, 11, 9, 7, 5, 3},
-		{15, 13, 11, 9, 7, 5, 3},
-	}
-	nConfigs := []int{2, 3, 4, 5, 6, 7, 8, 9}
-	mConfigs := []int{1}
-
-	lConfigs := []int{
-		3,
-		4,
-		5,
-		6,
-		7,
-		8,
-		9,
-		// 10,
-		// 11,
-		// 12,
-		// 13,
+	simSettings, err := LoadSimulationSettings("simulation_settings.json")
+	if err != nil {
+		log.Fatalf("Error loading settings: %v", err)
 	}
 
-	tpmTypes := []string{
-		"fully_connected",
-		"partially_connected",
-		"no_overlap",
-	}
+	fmt.Println("Settings loaded:")
+	fmt.Println(simSettings)
 
-	learnRules := []string{
-		"Hebbian",
-		"Anti-Hebbian",
-		"Random-Walk",
-	}
-
-	workerPool := pool.New().WithMaxGoroutines(max_threads)
-	for _, tpm_type := range tpmTypes {
-		for _, rule := range learnRules {
-			for _, k := range neuronConfigs {
-				for _, l := range lConfigs {
-					for _, n_0 := range nConfigs {
-						for _, m := range mConfigs {
+	workerPool := pool.New().WithMaxGoroutines(simSettings.MaxWorkerCount)
+	for _, tpm_type := range simSettings.TpmTypes {
+		for _, rule := range simSettings.LearnRules {
+			for _, k := range simSettings.KConfigs {
+				for _, l := range simSettings.LConfigs {
+					for _, n_0 := range simSettings.NConfigs {
+						for _, m := range simSettings.MConfigs {
 							tpmSettings, err := SettingsFactory(k, n_0, l, m, tpm_type, rule)
 							if err != nil {
 								continue
@@ -93,12 +94,12 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 									Uid:                 token,
 									Config:              tpmSettings,
 									StartTime:           startTime,
-									MaxSessionCount:     max_session_count,
+									MaxSessionCount:     simSettings.MaxSessionCount,
 									CurrentSessionCount: 0,
 								}
 								sessionMap.Sessions[token] = &simulationData
 
-								for i := 0; i < max_session_count; i++ {
+								for i := 0; i < simSettings.MaxSessionCount; i++ {
 
 									startTime, ntpErr = getCurrentTimeFromNTP()
 									if ntpErr != nil {
@@ -106,7 +107,7 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 									}
 									seed := time.Now().UnixNano()
 									localRand := rand.New(rand.NewSource(seed))
-									session := SyncSession(tpmSettings, max_iterations, seed, localRand)
+									session := SyncSession(tpmSettings, simSettings.MaxIterations, seed, localRand)
 
 									endTime, ntpErr := getCurrentTimeFromNTP()
 									if ntpErr != nil {

@@ -16,7 +16,7 @@ import (
 var sessionMap = tpm_sync.NewSessionMap()
 
 func main() {
-	err := godotenv.Load("../../.env")
+	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
