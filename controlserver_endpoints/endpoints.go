@@ -36,6 +36,10 @@ func main() {
 		datadumpHandler(w, r, db)
 	})
 
+	http.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+		sessionHandler(w, r, sessionMap)
+	})
+
 	go tpm_sync.SimulateOnStart(db, sessionMap)
 
 	http.ListenAndServe(":8080", nil)
@@ -49,6 +53,18 @@ func datadumpHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	fmt.Fprint(w, jsonResult)
+}
+
+func sessionHandler(w http.ResponseWriter, r *http.Request, sessionMap *tpm_sync.SessionMap) {
+	sessionMap.Mutex.RLock()
+	jsonString, err := json.Marshal(sessionMap.Sessions)
+	sessionMap.Mutex.RUnlock()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Fprint(w, string(jsonString))
 }
 
 func FetchTableAsJSON(db *sql.DB, tableName string) (string, error) {

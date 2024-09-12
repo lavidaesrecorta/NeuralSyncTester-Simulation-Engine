@@ -25,13 +25,13 @@ type OpenSession struct {
 }
 
 type SessionMap struct {
-	sessions map[string]*OpenSession
-	mutex    sync.Mutex
+	Sessions map[string]*OpenSession
+	Mutex    sync.RWMutex
 }
 
 func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 
-	max_session_count := 5000
+	max_session_count := 10
 	max_iterations := 100_000
 	max_threads := 3
 
@@ -97,7 +97,7 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 									MaxSessionCount:     max_session_count,
 									CurrentSessionCount: 0,
 								}
-								sessionMap.sessions[token] = &simulationData
+								sessionMap.Sessions[token] = &simulationData
 
 								for i := 0; i < max_session_count; i++ {
 
@@ -114,11 +114,11 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 										endTime = time.Now()
 									}
 									insertIntoDB(db, tpmSettings, session, startTime, endTime)
-									fmt.Println(session)
+									sessionMap.Sessions[token].CurrentSessionCount += 1
 								}
-								sessionMap.mutex.Lock()
-								delete(sessionMap.sessions, token)
-								sessionMap.mutex.Unlock()
+								sessionMap.Mutex.Lock()
+								delete(sessionMap.Sessions, token)
+								sessionMap.Mutex.Unlock()
 							})
 						}
 					}
@@ -200,6 +200,6 @@ func generateToken(startTime time.Time, config TPMmSettings) string {
 
 func NewSessionMap() *SessionMap {
 	return &SessionMap{
-		sessions: make(map[string]*OpenSession),
+		Sessions: make(map[string]*OpenSession),
 	}
 }
