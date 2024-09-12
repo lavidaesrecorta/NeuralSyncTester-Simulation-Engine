@@ -2,7 +2,7 @@ version: '3.8'
 services: 
   database:
     image: mysql:lts
-    restart: always
+    # restart: always
     environment:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}

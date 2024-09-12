@@ -60,15 +60,15 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 	}, nil
 }
 
-func InitializeSession(tpmSettings TPMmSettings) TPMmSessionState {
+func InitializeSession(tpmSettings TPMmSettings, localRand *rand.Rand) TPMmSessionState {
 	h := len(tpmSettings.K)
 	weights_a := make([][][]int, h)
 	weights_b := make([][][]int, h)
 	for layer := 0; layer < h; layer++ {
-		weights_a[layer] = createRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L)
-		weights_b[layer] = createRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L)
+		weights_a[layer] = CreateRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, localRand)
+		weights_b[layer] = CreateRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, localRand)
 	}
-	stim := createRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M)
+	stim := CreateRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M, localRand)
 	layer_stim_a := make([][][]int, h)
 	layer_stim_b := make([][][]int, h)
 	outputs_a := make([][]int, h)
@@ -85,11 +85,11 @@ func InitializeSession(tpmSettings TPMmSettings) TPMmSessionState {
 	}
 }
 
-func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64) SessionData {
+func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localRand *rand.Rand) SessionData {
 
 	//setup simulation
 	h := len(tpmSettings.K)
-	sessionState := InitializeSession(tpmSettings)
+	sessionState := InitializeSession(tpmSettings, localRand)
 	initialState := sessionState
 	fmt.Println("A_0:", sessionState.Weights_A)
 	fmt.Println("B_0:", sessionState.Weights_B)
@@ -136,7 +136,7 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64) Sessio
 			}
 			learn_iterations += 1
 		}
-		sessionState.Stimulus = createRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M)
+		sessionState.Stimulus = CreateRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M, localRand)
 	}
 
 	fmt.Println("A:", sessionState.Weights_A)
@@ -231,23 +231,23 @@ func stimulateLayer(stimu [][]int, weights [][]int, k int, n int) []int {
 	return layerOutputs
 }
 
-func createRandomStimulusArray(k int, n int, m int) [][]int {
+func CreateRandomStimulusArray(k int, n int, m int, localRand *rand.Rand) [][]int {
 	stim := make([][]int, k)
 	for i := 0; i < k; i++ {
 		stim[i] = make([]int, n)
 		for j := 0; j < n; j++ {
-			stim[i][j] = (rand.Intn(2)*2 - 1) * (rand.Intn(m) + 1)
+			stim[i][j] = (localRand.Intn(2)*2 - 1) * (localRand.Intn(m) + 1)
 		}
 	}
 	return stim
 }
 
-func createRandomLayerWeightsArray(k int, n int, l int) [][]int {
+func CreateRandomLayerWeightsArray(k int, n int, l int, localRand *rand.Rand) [][]int {
 	w := make([][]int, k)
 	for i := 0; i < k; i++ {
 		w[i] = make([]int, n)
 		for j := 0; j < n; j++ {
-			w[i][j] = (rand.Intn(2)*2 - 1) * (rand.Intn(l + 1)) // l + 1 because the function goes from [0,l[
+			w[i][j] = (localRand.Intn(2)*2 - 1) * (localRand.Intn(l + 1)) // l + 1 because the function goes from [0,l[
 		}
 	}
 	return w

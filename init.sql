@@ -14,6 +14,6 @@ CREATE TABLE sessions (
     status VARCHAR(255) NOT NULL,
     stimulate_iterations INT NOT NULL,
     learn_iterations INT NOT NULL,
-    initial_state JSON NOT NULL
+    initial_state JSON NOT NULL,
     final_state JSON NOT NULL
 );

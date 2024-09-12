@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"runtime"
 	"sync"
@@ -28,7 +29,7 @@ type SessionMap struct {
 	mutex    sync.Mutex
 }
 
-func SimulateOnStart(db *sql.DB, seed int64, sessionMap SessionMap) {
+func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 
 	max_session_count := 5000
 	max_iterations := 100_000
@@ -104,19 +105,21 @@ func SimulateOnStart(db *sql.DB, seed int64, sessionMap SessionMap) {
 									if ntpErr != nil {
 										startTime = time.Now()
 									}
-									session := SyncSession(tpmSettings, max_iterations, seed)
+									seed := time.Now().UnixNano()
+									localRand := rand.New(rand.NewSource(seed))
+									session := SyncSession(tpmSettings, max_iterations, seed, localRand)
 
 									endTime, ntpErr := getCurrentTimeFromNTP()
 									if ntpErr != nil {
 										endTime = time.Now()
 									}
 									insertIntoDB(db, tpmSettings, session, startTime, endTime)
+									fmt.Println(session)
 								}
 								sessionMap.mutex.Lock()
 								delete(sessionMap.sessions, token)
 								sessionMap.mutex.Unlock()
 							})
-							// fmt.Println(session.FinalWeights)
 						}
 					}
 				}
@@ -165,7 +168,7 @@ func insertIntoDB(db *sql.DB, config TPMmSettings, session SessionData, startTim
 	sqlData := map[string]interface{}{
 		"host":                 hostname,
 		"seed":                 session.Seed,
-		"version":              runtime.Version(),
+		"program_version":      runtime.Version(),
 		"k":                    string(kJSON),
 		"n_0":                  config.N[0],
 		"l":                    config.L,
@@ -180,8 +183,8 @@ func insertIntoDB(db *sql.DB, config TPMmSettings, session SessionData, startTim
 		"initial_state":        string(initialStateJSON),
 		"final_state":          string(finalStateJSON),
 	}
-	query := fmt.Sprintf("INSERT INTO %s (host, seed, version, k, n_0, l, m, tpm_type, learn_rule, start_time, end_time, status, stimulate_iterations, learn_iterations, initial_state, final_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", os.Getenv("DB_NAME"))
-	_, err = db.Exec(query, sqlData["host"], sqlData["seed"], sqlData["version"], sqlData["k"], sqlData["n_0"], sqlData["l"], sqlData["m"], sqlData["tpm_type"], sqlData["learn_rule"], sqlData["start_time"], sqlData["end_time"], sqlData["status"], sqlData["stimulate_iterations"], sqlData["learn_iterations"], sqlData["initial_state"], sqlData["final_state"])
+	query := fmt.Sprintf("INSERT INTO %s (host, seed, program_version, k, n_0, l, m, tpm_type, learn_rule, start_time, end_time, status, stimulate_iterations, learn_iterations, initial_state, final_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", os.Getenv("DB_NAME"))
+	_, err = db.Exec(query, sqlData["host"], sqlData["seed"], sqlData["program_version"], sqlData["k"], sqlData["n_0"], sqlData["l"], sqlData["m"], sqlData["tpm_type"], sqlData["learn_rule"], sqlData["start_time"], sqlData["end_time"], sqlData["status"], sqlData["stimulate_iterations"], sqlData["learn_iterations"], sqlData["initial_state"], sqlData["final_state"])
 	if err != nil {
 		fmt.Println(fmt.Errorf("failed to insert data into MySQL: %v", err))
 	}
@@ -193,4 +196,10 @@ func generateToken(startTime time.Time, config TPMmSettings) string {
 	h.Write([]byte(idStamp))
 	token := hex.EncodeToString(h.Sum(nil))
 	return token
+}
+
+func NewSessionMap() *SessionMap {
+	return &SessionMap{
+		sessions: make(map[string]*OpenSession),
+	}
 }
