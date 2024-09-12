@@ -1,5 +1,7 @@
 CREATE TABLE sessions (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    seed BIGINT NOT NULL,
+    program_version VARCHAR(255) NOT NULL,
     host VARCHAR(255) NOT NULL,
     k JSON NOT NULL,
     n_0 INT NOT NULL,
@@ -12,5 +14,6 @@ CREATE TABLE sessions (
     status VARCHAR(255) NOT NULL,
     stimulate_iterations INT NOT NULL,
     learn_iterations INT NOT NULL,
-    final_weights JSON NOT NULL
+    initial_state JSON NOT NULL
+    final_state JSON NOT NULL
 );
