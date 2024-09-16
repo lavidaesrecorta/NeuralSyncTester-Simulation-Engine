@@ -21,7 +21,7 @@ services:
       timeout: 10s
   
   simulation_service:
-    image: tpm_simulation_service:latest
+    image: rjimenezucn/go_sim_server:latest
     ports:
       - "8080:8080"
     depends_on:
