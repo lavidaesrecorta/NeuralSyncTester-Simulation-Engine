@@ -138,6 +138,7 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localR
 	return SessionData{
 		Seed:                seed,
 		StimulateIterations: total_iterations,
+		LearnIterations:     learn_iterations,
 		InitialState:        initialState,
 		FinalState:          sessionState,
 		Status:              "FINISHED",
