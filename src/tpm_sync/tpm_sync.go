@@ -33,6 +33,10 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 	switch parsed_tpmType := strings.ToUpper(tpmType); parsed_tpmType {
 	case "PARTIALLY_CONNECTED":
 		stimHandler = PartialConnectionTPM{}
+	case "FULLY_CONNECTED":
+		stimHandler = FullConnectionTPM{}
+	case "NO_OVERLAP":
+		stimHandler = NoOverlapTPM{}
 	}
 	if stimHandler == nil {
 		return TPMmSettings{}, fmt.Errorf("TPM type is invalid: %s", tpmType)
@@ -41,6 +45,10 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 	switch parsed_learnRule := strings.ToUpper(learnRule); parsed_learnRule {
 	case "HEBBIAN":
 		ruleHandler = HebbianLearnRule{}
+	case "ANTI-HEBBIAN":
+		ruleHandler = AntiHebbianLearnRule{}
+	case "RANDOM-WALK":
+		ruleHandler = RandomWalkLearnRule{}
 	}
 	if ruleHandler == nil {
 		return TPMmSettings{}, fmt.Errorf("TPM rule is invalid: %s", learnRule)
