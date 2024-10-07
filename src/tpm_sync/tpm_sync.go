@@ -61,6 +61,7 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 		N:                   N,
 		L:                   l,
 		M:                   m,
+		H:                   len(K),
 		LearnRule:           learnRule,
 		LinkType:            tpmType,
 		learnRuleHandler:    ruleHandler,
@@ -69,18 +70,17 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 }
 
 func InitializeSession(tpmSettings TPMmSettings, localRand *rand.Rand) TPMmSessionState {
-	h := len(tpmSettings.K)
-	weights_a := make([][][]int, h)
-	weights_b := make([][][]int, h)
-	for layer := 0; layer < h; layer++ {
+	weights_a := make([][][]int, tpmSettings.H)
+	weights_b := make([][][]int, tpmSettings.H)
+	for layer := 0; layer < tpmSettings.H; layer++ {
 		weights_a[layer] = CreateRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, localRand)
 		weights_b[layer] = CreateRandomLayerWeightsArray(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, localRand)
 	}
 	stim := CreateRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M, localRand)
-	layer_stim_a := make([][][]int, h)
-	layer_stim_b := make([][][]int, h)
-	outputs_a := make([][]int, h)
-	outputs_b := make([][]int, h)
+	layer_stim_a := make([][][]int, tpmSettings.H)
+	layer_stim_b := make([][][]int, tpmSettings.H)
+	outputs_a := make([][]int, tpmSettings.H)
+	outputs_b := make([][]int, tpmSettings.H)
 
 	return TPMmSessionState{
 		Stimulus:         stim,
@@ -96,13 +96,12 @@ func InitializeSession(tpmSettings TPMmSettings, localRand *rand.Rand) TPMmSessi
 func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localRand *rand.Rand) SessionData {
 
 	//setup simulation
-	h := len(tpmSettings.K)
 	sessionState := InitializeSession(tpmSettings, localRand)
 	initialState := sessionState
 	//Start simulation
 	total_iterations := 0
 	learn_iterations := 0
-	for !CompareWeights(h, tpmSettings.K, tpmSettings.N, sessionState.Weights_A, sessionState.Weights_B) {
+	for !CompareWeights(tpmSettings.H, tpmSettings.K, tpmSettings.N, sessionState.Weights_A, sessionState.Weights_B) {
 
 		//Health Check: has the simulation has been running for too long?
 		if total_iterations > maxIterations && maxIterations != 0 {
@@ -121,21 +120,21 @@ func SyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localR
 		sessionState.layer_stimulus_b[0] = sessionState.Stimulus
 
 		//Stimulate layers, stimulate the last layer separate from the rest to avoid creating unnecesary stimulus arrays
-		for layer := 0; layer < h-1; layer++ {
+		for layer := 0; layer < tpmSettings.H-1; layer++ {
 			sessionState.Outputs_A[layer] = stimulateLayer(sessionState.layer_stimulus_a[layer], sessionState.Weights_A[layer], tpmSettings.K[layer], tpmSettings.N[layer])
 			sessionState.Outputs_B[layer] = stimulateLayer(sessionState.layer_stimulus_b[layer], sessionState.Weights_B[layer], tpmSettings.K[layer], tpmSettings.N[layer])
 			sessionState.layer_stimulus_a[layer+1] = tpmSettings.stimulationHandlers.CreateStimulusFromLayerOutput(sessionState.Outputs_A[layer], tpmSettings.K[layer+1], tpmSettings.N[layer+1])
 			sessionState.layer_stimulus_b[layer+1] = tpmSettings.stimulationHandlers.CreateStimulusFromLayerOutput(sessionState.Outputs_B[layer], tpmSettings.K[layer+1], tpmSettings.N[layer+1])
 		}
-		sessionState.Outputs_A[h-1] = stimulateLayer(sessionState.layer_stimulus_a[h-1], sessionState.Weights_A[h-1], tpmSettings.K[h-1], tpmSettings.N[h-1])
-		sessionState.Outputs_B[h-1] = stimulateLayer(sessionState.layer_stimulus_b[h-1], sessionState.Weights_B[h-1], tpmSettings.K[h-1], tpmSettings.N[h-1])
-		final_output_a := thau(sessionState.Outputs_A[h-1], tpmSettings.K[h-1])
-		final_output_b := thau(sessionState.Outputs_B[h-1], tpmSettings.K[h-1])
+		sessionState.Outputs_A[tpmSettings.H-1] = stimulateLayer(sessionState.layer_stimulus_a[tpmSettings.H-1], sessionState.Weights_A[tpmSettings.H-1], tpmSettings.K[tpmSettings.H-1], tpmSettings.N[tpmSettings.H-1])
+		sessionState.Outputs_B[tpmSettings.H-1] = stimulateLayer(sessionState.layer_stimulus_b[tpmSettings.H-1], sessionState.Weights_B[tpmSettings.H-1], tpmSettings.K[tpmSettings.H-1], tpmSettings.N[tpmSettings.H-1])
+		final_output_a := thau(sessionState.Outputs_A[tpmSettings.H-1], tpmSettings.K[tpmSettings.H-1])
+		final_output_b := thau(sessionState.Outputs_B[tpmSettings.H-1], tpmSettings.K[tpmSettings.H-1])
 		total_iterations += 1
 
 		//Check if we need to learn in this iteration
 		if final_output_a == final_output_b {
-			for layer := 0; layer < h; layer++ {
+			for layer := 0; layer < tpmSettings.H; layer++ {
 				tpmSettings.learnRuleHandler.TPMLearnLayer(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, sessionState.Weights_A[layer], sessionState.layer_stimulus_a[layer], sessionState.Outputs_A[layer], final_output_a, final_output_b)
 				tpmSettings.learnRuleHandler.TPMLearnLayer(tpmSettings.K[layer], tpmSettings.N[layer], tpmSettings.L, sessionState.Weights_B[layer], sessionState.layer_stimulus_b[layer], sessionState.Outputs_B[layer], final_output_b, final_output_a)
 			}

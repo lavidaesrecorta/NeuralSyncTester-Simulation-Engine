@@ -15,6 +15,7 @@ type TPMmSettings struct {
 	N                   []int
 	L                   int
 	M                   int
+	H                   int
 	LearnRule           string
 	LinkType            string
 	stimulationHandlers TPMStimulationHandlers

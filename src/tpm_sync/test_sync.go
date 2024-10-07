@@ -97,7 +97,9 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 									MaxSessionCount:     simSettings.MaxSessionCount,
 									CurrentSessionCount: 0,
 								}
+								sessionMap.Mutex.Lock()
 								sessionMap.Sessions[token] = &simulationData
+								sessionMap.Mutex.Unlock()
 
 								for i := 0; i < simSettings.MaxSessionCount; i++ {
 
@@ -114,7 +116,10 @@ func SimulateOnStart(db *sql.DB, sessionMap *SessionMap) {
 										endTime = time.Now()
 									}
 									insertIntoDB(db, tpmSettings, session, startTime, endTime)
+									sessionMap.Mutex.Lock()
 									sessionMap.Sessions[token].CurrentSessionCount += 1
+									sessionMap.Mutex.Unlock()
+
 								}
 								sessionMap.Mutex.Lock()
 								delete(sessionMap.Sessions, token)
@@ -173,6 +178,8 @@ func insertIntoDB(db *sql.DB, config TPMmSettings, session SessionData, startTim
 		"n_0":                  config.N[0],
 		"l":                    config.L,
 		"m":                    config.M,
+		"h":                    config.H,
+		"data_size":            GetDataSizeFromConfig(config),
 		"tpm_type":             config.LinkType,
 		"learn_rule":           config.LearnRule,
 		"start_time":           startTime.Format("2006-01-02 15:04:05"),
@@ -183,8 +190,8 @@ func insertIntoDB(db *sql.DB, config TPMmSettings, session SessionData, startTim
 		"initial_state":        string(initialStateJSON),
 		"final_state":          string(finalStateJSON),
 	}
-	query := fmt.Sprintf("INSERT INTO %s (host, seed, program_version, k, n_0, l, m, tpm_type, learn_rule, start_time, end_time, status, stimulate_iterations, learn_iterations, initial_state, final_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", os.Getenv("DB_NAME"))
-	_, err = db.Exec(query, sqlData["host"], sqlData["seed"], sqlData["program_version"], sqlData["k"], sqlData["n_0"], sqlData["l"], sqlData["m"], sqlData["tpm_type"], sqlData["learn_rule"], sqlData["start_time"], sqlData["end_time"], sqlData["status"], sqlData["stimulate_iterations"], sqlData["learn_iterations"], sqlData["initial_state"], sqlData["final_state"])
+	query := fmt.Sprintf("INSERT INTO %s (host, seed, program_version, k, n_0, l, m, h, data_size, tpm_type, learn_rule, start_time, end_time, status, stimulate_iterations, learn_iterations, initial_state, final_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", os.Getenv("DB_NAME"))
+	_, err = db.Exec(query, sqlData["host"], sqlData["seed"], sqlData["program_version"], sqlData["k"], sqlData["n_0"], sqlData["l"], sqlData["m"], sqlData["h"], sqlData["data_size"], sqlData["tpm_type"], sqlData["learn_rule"], sqlData["start_time"], sqlData["end_time"], sqlData["status"], sqlData["stimulate_iterations"], sqlData["learn_iterations"], sqlData["initial_state"], sqlData["final_state"])
 	if err != nil {
 		fmt.Println(fmt.Errorf("failed to insert data into MySQL: %v", err))
 	}
@@ -202,4 +209,14 @@ func NewSessionMap() *SessionMap {
 	return &SessionMap{
 		Sessions: make(map[string]*OpenSession),
 	}
+}
+
+func GetDataSizeFromConfig(config TPMmSettings) int {
+	//Count the amount of weights
+	//So, count each stimulus, for every neuron, for every layer
+	totalDataSize := 0
+	for layer := 0; layer < config.H; layer++ {
+		totalDataSize += config.K[layer] * config.N[layer]
+	}
+	return totalDataSize
 }

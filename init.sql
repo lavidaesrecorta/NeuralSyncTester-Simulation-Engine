@@ -7,6 +7,8 @@ CREATE TABLE sessions (
     n_0 INT NOT NULL,
     l INT NOT NULL,
     m INT NOT NULL,
+    h INT NOT NULL,
+    data_size INT NOT NULL,
     tpm_type VARCHAR(255) NOT NULL,
     learn_rule VARCHAR(255) NOT NULL,
     start_time DATETIME NOT NULL,
