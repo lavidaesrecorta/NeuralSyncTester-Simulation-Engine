@@ -30,6 +30,8 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 	var stimHandler TPMStimulationHandlers
 	var ruleHandler TPMLearnRuleHandler
 
+	reverseParameters := false // this is because the no overlap os defined by the stimulus, so K[] is actually N[] and n_0 is actually k_last
+
 	switch parsed_tpmType := strings.ToUpper(tpmType); parsed_tpmType {
 	case "PARTIALLY_CONNECTED":
 		stimHandler = PartialConnectionTPM{}
@@ -37,6 +39,7 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 		stimHandler = FullConnectionTPM{}
 	case "NO_OVERLAP":
 		stimHandler = NoOverlapTPM{}
+		reverseParameters = true
 	}
 	if stimHandler == nil {
 		return TPMmSettings{}, fmt.Errorf("TPM type is invalid: %s", tpmType)
@@ -55,6 +58,11 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 	}
 
 	N := stimHandler.CreateStimulationStructure(K, n_0)
+	if reverseParameters {
+		aux := N
+		N = K
+		K = aux
+	}
 
 	return TPMmSettings{
 		K:                   K,

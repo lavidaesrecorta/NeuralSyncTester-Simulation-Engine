@@ -4,21 +4,14 @@ type NoOverlapTPM struct{}
 
 const branches_per_node = 2 //each neuron has two branches
 
-func (tpm NoOverlapTPM) CreateStimulationStructure(k []int, n_0 int) []int {
-	h := len(k)
-	n := make([]int, h)
-
-	n[0] = n_0
-	if k[h-1] < 2 {
-		return nil
+func (tpm NoOverlapTPM) CreateStimulationStructure(n []int, k_last int) []int {
+	h := len(n)
+	k := make([]int, h)
+	k[h-1] = k_last
+	for i := 1; i < h; i++ {
+		k[h-1-i] = n[h-i] * k[h-i]
 	}
-	for layer := 1; layer < h; layer++ {
-		if k[h-1-layer] != k[h-1]*IntPow(branches_per_node, layer) {
-			return nil
-		}
-		n[layer] = branches_per_node
-	}
-	return n
+	return k
 }
 
 func (tpm NoOverlapTPM) CreateStimulusFromLayerOutput(outputs []int, k_h int, n_h int) [][]int {
@@ -26,7 +19,7 @@ func (tpm NoOverlapTPM) CreateStimulusFromLayerOutput(outputs []int, k_h int, n_
 	for i := 0; i < k_h; i++ {
 		new_stimulus[i] = make([]int, n_h)
 		for j := 0; j < n_h; j++ {
-			new_stimulus[i][j] = outputs[branches_per_node*i+j]
+			new_stimulus[i][j] = outputs[n_h*i+j]
 		}
 	}
 
