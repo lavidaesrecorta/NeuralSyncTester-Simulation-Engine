@@ -32,6 +32,8 @@ func SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule s
 
 	reverseParameters := false // this is because the no overlap os defined by the stimulus, so K[] is actually N[] and n_0 is actually k_last
 
+	K = copySlice(K)
+
 	switch parsed_tpmType := strings.ToUpper(tpmType); parsed_tpmType {
 	case "PARTIALLY_CONNECTED":
 		stimHandler = PartialConnectionTPM{}
@@ -260,4 +262,10 @@ func CreateRandomLayerWeightsArray(k int, n int, l int, localRand *rand.Rand) []
 		}
 	}
 	return w
+}
+
+func copySlice(input []int) []int {
+	copied := make([]int, len(input))
+	copy(copied, input)
+	return copied
 }
