@@ -1,8 +1,6 @@
-package tpm_sync
+package tpm_handlers
 
 type NoOverlapTPM struct{}
-
-const branches_per_node = 2 //each neuron has two branches
 
 func (tpm NoOverlapTPM) CreateStimulationStructure(n []int, k_last int) []int {
 	h := len(n)

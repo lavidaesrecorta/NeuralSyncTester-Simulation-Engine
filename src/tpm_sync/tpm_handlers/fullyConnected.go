@@ -1,4 +1,4 @@
-package tpm_sync
+package tpm_handlers
 
 type FullConnectionTPM struct{}
 

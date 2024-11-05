@@ -1,4 +1,9 @@
-package tpm_sync
+package tpm_controllers
+
+import (
+	"tpm_sync/tpm_handlers"
+	"tpm_sync/tpm_learnRules"
+)
 
 type TPMmSessionState struct {
 	Stimulus         [][]int
@@ -18,15 +23,15 @@ type TPMmSettings struct {
 	H                   int
 	LearnRule           string
 	LinkType            string
-	stimulationHandlers TPMStimulationHandlers
-	learnRuleHandler    TPMLearnRuleHandler
+	stimulationHandlers tpm_handlers.TPMStimulationHandlers
+	learnRuleHandler    tpm_learnRules.TPMLearnRuleHandler
 }
 
-type TPMStimulationHandlers interface {
-	CreateStimulationStructure(k []int, n_0 int) []int
-	CreateStimulusFromLayerOutput(outputs []int, k_h int, n_h int) [][]int
-}
-
-type TPMLearnRuleHandler interface {
-	TPMLearnLayer(k int, n int, l int, weights [][]int, stimulus [][]int, outputs []int, output_a int, output_b int)
+type SessionData struct {
+	Seed                int64
+	StimulateIterations int
+	LearnIterations     int
+	InitialState        TPMmSessionState
+	FinalState          TPMmSessionState
+	Status              string
 }

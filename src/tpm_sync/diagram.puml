@@ -1,0 +1,183 @@
+@startuml
+namespace tpm_controllers {
+    class DatabaseController << (S,Aquamarine) >> {
+        - db *sql.DB
+
+        - insertIntoDB(config TPMmSettings, session SessionData, startTime time.Time, endTime time.Time) 
+
+        + CloseDb() error
+        + FetchFullTableAsJSON(tableName string) (string, error)
+        + GetFullIterationStatsFromDB(tableName string) (IterationStatsResponse, error)
+        + QuerySurfaceGraph(X string, Y string, tableName string) ([][]<font color=blue>interface</font>{}, error)
+        + QueryFinishedCount(tableName string) ([]FinishedCountData, error)
+        + GetSessionsByK(kValues []int, tableName string, tpmType string) (*SessionAvgsAndCounts, error)
+
+    }
+    class FinishedCountData << (S,Aquamarine) >> {
+        + LearnRule string
+        + TPMType string
+        + HLGroup string
+        + FinishedCount int
+        + TotalCount int
+
+    }
+    class IterationGroup << (S,Aquamarine) >> {
+        + X string
+        + Y string
+
+    }
+    class IterationStatsResponse << (S,Aquamarine) >> {
+        + Graphs <font color=blue>map</font>[string][][]<font color=blue>interface</font>{}
+
+    }
+    class OpenSession << (S,Aquamarine) >> {
+        + Uid string
+        + Config TPMmSettings
+        + StartTime time.Time
+        + MaxSessionCount int
+        + CurrentSessionCount int
+
+    }
+    class SessionAvgsAndCounts << (S,Aquamarine) >> {
+        + AvgLearnIterations float64
+        + AvgStimulateIterations float64
+        + TotalCount int
+        + FinishedCount int
+        + UnfinishedCount int
+
+    }
+    class SessionData << (S,Aquamarine) >> {
+        + Seed int64
+        + StimulateIterations int
+        + LearnIterations int
+        + InitialState TPMmSessionState
+        + FinalState TPMmSessionState
+        + Status string
+
+    }
+    class SessionMap << (S,Aquamarine) >> {
+        + Sessions <font color=blue>map</font>[string]*OpenSession
+        + Mutex sync.RWMutex
+
+    }
+    class SimulationController << (S,Aquamarine) >> {
+        + SyncController SyncController
+        + DatabaseController DatabaseController
+
+        - getCurrentTimeFromNTP() (time.Time, error)
+        - generateToken(startTime time.Time, config TPMmSettings) string
+
+        + LoadSimulationSettings(filename string) (*SimulationSettings, error)
+        + SimulateOnStart(sessionMap *SessionMap) 
+
+    }
+    class SimulationSettings << (S,Aquamarine) >> {
+        + MaxSessionCount int
+        + MaxIterations int
+        + MaxWorkerCount int
+        + KConfigs [][]int
+        + NConfigs []int
+        + MConfigs []int
+        + LConfigs []int
+        + TpmTypes []string
+        + LearnRules []string
+
+    }
+    class SyncController << (S,Aquamarine) >> {
+        + SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule string) (TPMmSettings, error)
+        + CreateSessionInstance(tpmSettings TPMmSettings, localRand *rand.Rand) TPMmSessionState
+        + StartSyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localRand *rand.Rand) SessionData
+        + GetDataSizeFromConfig(config TPMmSettings) int
+
+    }
+    class TPMmSessionState << (S,Aquamarine) >> {
+        - layer_stimulus_a [][][]int
+        - layer_stimulus_b [][][]int
+
+        + Stimulus [][]int
+        + Weights_A [][][]int
+        + Weights_B [][][]int
+        + Outputs_A [][]int
+        + Outputs_B [][]int
+
+    }
+    class TPMmSettings << (S,Aquamarine) >> {
+        - stimulationHandlers tpm_handlers.TPMStimulationHandlers
+        - learnRuleHandler tpm_learnRules.TPMLearnRuleHandler
+
+        + K []int
+        + N []int
+        + L int
+        + M int
+        + H int
+        + LearnRule string
+        + LinkType string
+
+    }
+}
+
+
+"tpm_controllers.DatabaseController" o-- "sql.DB"
+"tpm_controllers.OpenSession" o-- "time.Time"
+"tpm_controllers.OpenSession" o-- "tpm_controllers.TPMmSettings"
+"tpm_controllers.SessionData" o-- "tpm_controllers.TPMmSessionState"
+"tpm_controllers.SessionMap" o-- "sync.RWMutex"
+"tpm_controllers.SessionMap" o-- "tpm_controllers.OpenSession"
+"tpm_controllers.SimulationController" o-- "tpm_controllers.DatabaseController"
+"tpm_controllers.SimulationController" o-- "tpm_controllers.SyncController"
+"tpm_controllers.TPMmSettings" o-- "tpm_handlers.TPMStimulationHandlers"
+"tpm_controllers.TPMmSettings" o-- "tpm_learnRules.TPMLearnRuleHandler"
+
+namespace tpm_handlers {
+    class FullConnectionTPM << (S,Aquamarine) >> {
+        + CreateStimulationStructure(k []int, n_0 int) []int
+        + CreateStimulusFromLayerOutput(outputs []int, k_h int, n_h int) [][]int
+
+    }
+    class NoOverlapTPM << (S,Aquamarine) >> {
+        + CreateStimulationStructure(n []int, k_last int) []int
+        + CreateStimulusFromLayerOutput(outputs []int, k_h int, n_h int) [][]int
+
+    }
+    class PartialConnectionTPM << (S,Aquamarine) >> {
+        + CreateStimulationStructure(k []int, n_0 int) []int
+        + CreateStimulusFromLayerOutput(outputs []int, k_h int, n_h int) [][]int
+
+    }
+    interface TPMStimulationHandlers  {
+        + CreateStimulationStructure(k []int, n_0 int) []int
+        + CreateStimulusFromLayerOutput(outputs []int, k_h int, n_h int) [][]int
+
+    }
+}
+
+"tpm_handlers.TPMStimulationHandlers" <|-- "tpm_handlers.FullConnectionTPM"
+"tpm_handlers.TPMStimulationHandlers" <|-- "tpm_handlers.NoOverlapTPM"
+"tpm_handlers.TPMStimulationHandlers" <|-- "tpm_handlers.PartialConnectionTPM"
+
+
+namespace tpm_learnRules {
+    class AntiHebbianLearnRule << (S,Aquamarine) >> {
+        + TPMLearnLayer(k int, n int, l int, weights [][]int, stimulus [][]int, outputs []int, output_a int, output_b int) 
+
+    }
+    class HebbianLearnRule << (S,Aquamarine) >> {
+        + TPMLearnLayer(k int, n int, l int, weights [][]int, stimulus [][]int, outputs []int, output_a int, output_b int) 
+
+    }
+    class RandomWalkLearnRule << (S,Aquamarine) >> {
+        + TPMLearnLayer(k int, n int, l int, weights [][]int, stimulus [][]int, outputs []int, output_a int, output_b int) 
+
+    }
+    interface TPMLearnRuleHandler  {
+        + TPMLearnLayer(k int, n int, l int, weights [][]int, stimulus [][]int, outputs []int, output_a int, output_b int) 
+
+    }
+}
+
+"tpm_learnRules.TPMLearnRuleHandler" <|-- "tpm_learnRules.AntiHebbianLearnRule"
+"tpm_learnRules.TPMLearnRuleHandler" <|-- "tpm_learnRules.HebbianLearnRule"
+"tpm_learnRules.TPMLearnRuleHandler" <|-- "tpm_learnRules.RandomWalkLearnRule"
+
+
+@enduml
