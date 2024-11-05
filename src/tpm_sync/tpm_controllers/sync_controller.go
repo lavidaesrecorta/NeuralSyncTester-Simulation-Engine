@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"strings"
 	"tpm_sync/tpm_core"
-	"tpm_sync/tpm_handlers"
 	"tpm_sync/tpm_learnRules"
+	"tpm_sync/tpm_stimHandlers"
 )
 
 // import "fmt"
@@ -15,7 +15,7 @@ type SyncController struct {
 
 func (SyncController) SettingsFactory(K []int, n_0 int, l int, m int, tpmType string, learnRule string) (TPMmSettings, error) {
 
-	var stimHandler tpm_handlers.TPMStimulationHandlers
+	var stimHandler tpm_stimHandlers.TPMStimulationHandlers
 	var ruleHandler tpm_learnRules.TPMLearnRuleHandler
 
 	reverseParameters := false // this is because the no overlap os defined by the stimulus, so K[] is actually N[] and n_0 is actually k_last
@@ -24,11 +24,11 @@ func (SyncController) SettingsFactory(K []int, n_0 int, l int, m int, tpmType st
 
 	switch parsed_tpmType := strings.ToUpper(tpmType); parsed_tpmType {
 	case "PARTIALLY_CONNECTED":
-		stimHandler = tpm_handlers.PartialConnectionTPM{}
+		stimHandler = tpm_stimHandlers.PartialConnectionTPM{}
 	case "FULLY_CONNECTED":
-		stimHandler = tpm_handlers.FullConnectionTPM{}
+		stimHandler = tpm_stimHandlers.FullConnectionTPM{}
 	case "NO_OVERLAP":
-		stimHandler = tpm_handlers.NoOverlapTPM{}
+		stimHandler = tpm_stimHandlers.NoOverlapTPM{}
 		reverseParameters = true
 	}
 	if stimHandler == nil {

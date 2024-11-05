@@ -1,4 +1,4 @@
-package tpm_handlers
+package tpm_stimHandlers
 
 type FullConnectionTPM struct{}
 

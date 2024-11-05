@@ -1,8 +1,8 @@
 package tpm_controllers
 
 import (
-	"tpm_sync/tpm_handlers"
 	"tpm_sync/tpm_learnRules"
+	"tpm_sync/tpm_stimHandlers"
 )
 
 type TPMmSessionState struct {
@@ -23,7 +23,7 @@ type TPMmSettings struct {
 	H                   int
 	LearnRule           string
 	LinkType            string
-	stimulationHandlers tpm_handlers.TPMStimulationHandlers
+	stimulationHandlers tpm_stimHandlers.TPMStimulationHandlers
 	learnRuleHandler    tpm_learnRules.TPMLearnRuleHandler
 }
 

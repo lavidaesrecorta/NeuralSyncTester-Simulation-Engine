@@ -1,4 +1,4 @@
-package tpm_handlers
+package tpm_stimHandlers
 
 type TPMStimulationHandlers interface {
 	CreateStimulationStructure(k []int, n_0 int) []int
