@@ -11,11 +11,17 @@ type OpenSession struct {
 	StartTime           time.Time
 	MaxSessionCount     int
 	CurrentSessionCount int
+	CurrentStateChannel chan SessionStateMessage `json:"-"`
 }
 
 type SessionMap struct {
 	Sessions map[string]*OpenSession
 	Mutex    sync.RWMutex
+}
+
+type SessionStateMessage struct {
+	CommandType  string //stimualte or finished
+	SessionState interface{}
 }
 
 type SimulationSettings struct {

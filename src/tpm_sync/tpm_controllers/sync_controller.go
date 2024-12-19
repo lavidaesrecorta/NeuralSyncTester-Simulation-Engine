@@ -91,19 +91,33 @@ func (s SyncController) CreateSessionInstance(tpmSettings TPMmSettings, localRan
 	}
 }
 
-func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, maxIterations int, seed int64, localRand *rand.Rand) SessionData {
+func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, sessionChannel chan SessionStateMessage, maxIterations int, sendIterThreshold int, sendIterStep int, seed int64, localRand *rand.Rand) SessionData {
 
 	//Setup simulation
 	sessionState := s.CreateSessionInstance(tpmSettings, localRand)
+	var stateBuffer []TPMmSessionState
 	initialState := sessionState
 	//Start simulation
 	total_iterations := 0
 	learn_iterations := 0
+	send_iter_countdown := 0
 	for !tpm_core.CompareWeights(tpmSettings.H, tpmSettings.K, tpmSettings.N, sessionState.Weights_A, sessionState.Weights_B) {
 
+		if len(stateBuffer) >= sendIterThreshold {
+			sessionChannel <- SessionStateMessage{
+				CommandType:  "progress",
+				SessionState: stateBuffer,
+			}
+			stateBuffer = nil
+		}
+
+		if send_iter_countdown == 0 {
+			stateBuffer = append(stateBuffer, sessionState)
+			send_iter_countdown = sendIterStep //We wont add every single iteration, we just append one every sendIterStep iterations
+		}
 		//Health Check: has the simulation has been running for too long?
 		if total_iterations > maxIterations && maxIterations != 0 {
-			return SessionData{
+			sessionData := SessionData{
 				Seed:                seed,
 				StimulateIterations: total_iterations,
 				LearnIterations:     learn_iterations,
@@ -111,6 +125,11 @@ func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, maxIterations
 				FinalState:          sessionState,
 				Status:              "LIMIT_REACHED",
 			}
+			sessionChannel <- SessionStateMessage{
+				CommandType:  "finished",
+				SessionState: sessionData,
+			}
+			return sessionData
 		}
 
 		//Setup first layer, next layers will be calculated on the stimulation process
@@ -139,8 +158,11 @@ func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, maxIterations
 			learn_iterations += 1
 		}
 		sessionState.Stimulus = tpm_core.CreateRandomStimulusArray(tpmSettings.K[0], tpmSettings.N[0], tpmSettings.M, localRand)
+
+		send_iter_countdown--
 	}
-	return SessionData{
+
+	sessionData := SessionData{
 		Seed:                seed,
 		StimulateIterations: total_iterations,
 		LearnIterations:     learn_iterations,
@@ -148,6 +170,11 @@ func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, maxIterations
 		FinalState:          sessionState,
 		Status:              "FINISHED",
 	}
+	sessionChannel <- SessionStateMessage{
+		CommandType:  "finished",
+		SessionState: sessionData,
+	}
+	return sessionData
 }
 
 func (SyncController) GetDataSizeFromConfig(config TPMmSettings) int {

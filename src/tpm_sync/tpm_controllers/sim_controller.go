@@ -67,12 +67,15 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 									startTime = time.Now()
 								}
 								token := s.generateToken(startTime, tpmSettings)
+								sessionBufferSize := 10
+								sessionChannel := make(chan SessionStateMessage, sessionBufferSize)
 								simulationData := OpenSession{
 									Uid:                 token,
 									Config:              tpmSettings,
 									StartTime:           startTime,
 									MaxSessionCount:     simSettings.MaxSessionCount,
 									CurrentSessionCount: 0,
+									CurrentStateChannel: sessionChannel,
 								}
 								sessionMap.Mutex.Lock()
 								sessionMap.Sessions[token] = &simulationData
@@ -85,7 +88,9 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 									}
 									seed := time.Now().UnixNano()
 									localRand := rand.New(rand.NewSource(seed))
-									session := s.SyncController.StartSyncSession(tpmSettings, simSettings.MaxIterations, seed, localRand)
+									sendIterThreshold := 10
+									sendIterStep := 100
+									session := s.SyncController.StartSyncSession(tpmSettings, sessionChannel, simSettings.MaxIterations, sendIterThreshold, sendIterStep, seed, localRand)
 
 									endTime, ntpErr := s.getCurrentTimeFromNTP()
 									if ntpErr != nil {
@@ -100,6 +105,7 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 								sessionMap.Mutex.Lock()
 								delete(sessionMap.Sessions, token)
 								sessionMap.Mutex.Unlock()
+								close(sessionChannel)
 							})
 						}
 					}
