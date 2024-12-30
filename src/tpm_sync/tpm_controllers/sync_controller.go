@@ -91,22 +91,34 @@ func (s SyncController) CreateSessionInstance(tpmSettings TPMmSettings, localRan
 	}
 }
 
-func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, sessionChannel chan SessionStateMessage, maxIterations int, sendIterThreshold int, sendIterStep int, seed int64, localRand *rand.Rand) SessionData {
+func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, tracking bool, sessionChannel chan SessionStateMessage, enableTracking chan bool, maxIterations int, sendIterThreshold int, sendIterStep int, seed int64, localRand *rand.Rand) SessionData {
 
 	//Setup simulation
 	sessionState := s.CreateSessionInstance(tpmSettings, localRand)
 	var stateBuffer []TPMmSessionState
 	initialState := sessionState
+
 	//Start simulation
 	total_iterations := 0
 	learn_iterations := 0
 	send_iter_countdown := 0
 	for !tpm_core.CompareWeights(tpmSettings.H, tpmSettings.K, tpmSettings.N, sessionState.Weights_A, sessionState.Weights_B) {
 
+		select {
+		case state := <-enableTracking:
+			// fmt.Println("Enabled state:", state)
+			tracking = state
+		default:
+			// fmt.Println("Default case")
+		}
 		if len(stateBuffer) >= sendIterThreshold {
-			sessionChannel <- SessionStateMessage{
-				CommandType:  "progress",
-				SessionState: stateBuffer,
+
+			if tracking {
+				sessionChannel <- SessionStateMessage{
+					CommandType:  "progress",
+					SessionState: stateBuffer,
+				}
+
 			}
 			stateBuffer = nil
 		}
@@ -125,9 +137,12 @@ func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, sessionChanne
 				FinalState:          sessionState,
 				Status:              "LIMIT_REACHED",
 			}
-			sessionChannel <- SessionStateMessage{
-				CommandType:  "finished",
-				SessionState: sessionData,
+			if tracking {
+
+				sessionChannel <- SessionStateMessage{
+					CommandType:  "finished",
+					SessionState: sessionData,
+				}
 			}
 			return sessionData
 		}
@@ -170,9 +185,11 @@ func (s SyncController) StartSyncSession(tpmSettings TPMmSettings, sessionChanne
 		FinalState:          sessionState,
 		Status:              "FINISHED",
 	}
-	sessionChannel <- SessionStateMessage{
-		CommandType:  "finished",
-		SessionState: sessionData,
+	if tracking {
+		sessionChannel <- SessionStateMessage{
+			CommandType:  "finished",
+			SessionState: sessionData,
+		}
 	}
 	return sessionData
 }

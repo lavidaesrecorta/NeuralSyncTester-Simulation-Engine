@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/beevik/ntp"
@@ -19,94 +19,167 @@ type SimulationController struct {
 	DatabaseController DatabaseController
 }
 
+func ReadFile(filename string) ([]byte, error) {
+	// Read file content into a byte slice
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
+func UnmarshalSettings(data []byte) (BaseSettings, error) {
+	var baseSettings BaseSettings
+	err := json.Unmarshal(data, &baseSettings)
+	if err != nil {
+		return BaseSettings{}, err
+	}
+	return baseSettings, nil
+}
+
 // Function to read and deserialize JSON file
-func (s *SimulationController) LoadSimulationSettings(filename string) (*SimulationSettings, error) {
-	// Read the JSON file
-	data, err := os.ReadFile(filename)
+func (s *SimulationController) LoadSimulationSettings(filename string) (interface{}, error) {
+	file, err := os.Open(filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		fmt.Println("Error opening file:", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	// Read the entire file into a byte slice
+	fileInfo, err := os.Stat(filename)
+	if err != nil {
+		fmt.Println("Error getting file stats:", err)
+		return nil, err
+	}
+	fileData := make([]byte, fileInfo.Size())
+	_, err = file.Read(fileData)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return nil, err
 	}
 
-	// Create an instance of SimulationSettings
-	var settings SimulationSettings
-
-	// Unmarshal JSON data into the struct
-	err = json.Unmarshal(data, &settings)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	// Decode the file into a map
+	var rawConfig map[string]interface{}
+	if err := json.Unmarshal(fileData, &rawConfig); err != nil {
+		fmt.Println("Error unmarshalling config:", err)
+		return nil, err
 	}
 
-	return &settings, nil
+	return rawConfig, nil
+}
+
+func (s *SimulationController) SimulateInstance(sessionMap *SessionMap, tpmSettings TPMmSettings, simSettings BaseSettings) {
+
+	startTime, ntpErr := s.getCurrentTimeFromNTP()
+	if ntpErr != nil {
+		startTime = time.Now()
+	}
+	token := s.generateToken(startTime, tpmSettings)
+	// sessionBufferSize := 10
+	enableTrackingChannel := make(chan bool)
+	sessionChannel := make(chan SessionStateMessage)
+	simulationData := OpenSession{
+		Uid:                 token,
+		Config:              tpmSettings,
+		StartTime:           startTime,
+		MaxSessionCount:     simSettings.MaxSessionCount,
+		CurrentSessionCount: 0,
+		Tracking:            false,
+		CurrentStateChannel: sessionChannel,
+		EnableStateChannel:  enableTrackingChannel,
+	}
+	sessionMap.Mutex.Lock()
+	sessionMap.Sessions[token] = &simulationData
+	sessionMap.Mutex.Unlock()
+
+	for i := 0; i < simSettings.MaxSessionCount; i++ {
+		startTime, ntpErr = s.getCurrentTimeFromNTP()
+		if ntpErr != nil {
+			startTime = time.Now()
+		}
+		seed := time.Now().UnixNano()
+		localRand := rand.New(rand.NewSource(seed))
+		sendIterThreshold := 10
+		sendIterStep := 100
+		sessionMap.Mutex.RLock()
+		tracking := sessionMap.Sessions[token].Tracking
+		sessionMap.Mutex.RUnlock()
+		session := s.SyncController.StartSyncSession(tpmSettings, tracking, sessionChannel, enableTrackingChannel, simSettings.MaxIterations, sendIterThreshold, sendIterStep, seed, localRand)
+
+		endTime, ntpErr := s.getCurrentTimeFromNTP()
+		if ntpErr != nil {
+			endTime = time.Now()
+		}
+		s.DatabaseController.insertIntoDB(tpmSettings, session, startTime, endTime)
+		sessionMap.Mutex.Lock()
+		sessionMap.Sessions[token].CurrentSessionCount += 1
+		sessionMap.Mutex.Unlock()
+	}
+
+	sessionMap.Mutex.Lock()
+	delete(sessionMap.Sessions, token)
+	sessionMap.Mutex.Unlock()
+	close(sessionChannel)
+
 }
 
 func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 
-	simSettings, err := s.LoadSimulationSettings("simulation_settings.json")
+	rawConfig, err := s.LoadSimulationSettings("simulation_settings.json")
 	if err != nil {
-		log.Fatalf("Error loading settings: %v", err)
+		return
+	}
+	// Initialize a variable for the base settings
+	var baseSettings BaseSettings
+	baseSettingsData, _ := json.Marshal(rawConfig)
+
+	if err := json.Unmarshal(baseSettingsData, &baseSettings); err != nil {
+		fmt.Println("Error unmarshalling base settings:", err)
+		return
 	}
 
 	fmt.Println("Settings loaded:")
-	fmt.Println(simSettings)
+	fmt.Println(baseSettings)
 
-	workerPool := pool.New().WithMaxGoroutines(simSettings.MaxWorkerCount)
-	for _, tpm_type := range simSettings.TpmTypes {
-		for _, rule := range simSettings.LearnRules {
-			for _, k := range simSettings.KConfigs {
-				for _, l := range simSettings.LConfigs {
-					for _, n_0 := range simSettings.NConfigs {
-						for _, m := range simSettings.MConfigs {
-							tpmSettings, err := s.SyncController.SettingsFactory(k, n_0, l, m, tpm_type, rule)
+	workerPool := pool.New().WithMaxGoroutines(baseSettings.MaxWorkerCount)
+	for _, rule := range baseSettings.LearnRules {
+		for _, m := range baseSettings.MConfigs {
+			for _, l := range baseSettings.LConfigs {
+				switch strings.ToUpper(baseSettings.TpmType) {
+				case "NO_OVERLAP":
+					var noOverlapSettings NonOverlappedSettings
+
+					if err := json.Unmarshal(baseSettingsData, &noOverlapSettings); err != nil {
+						fmt.Println("Error unmarshalling noOverlap settings:", err)
+					}
+
+					for _, n := range noOverlapSettings.NConfigs {
+						for _, k_last := range noOverlapSettings.KlastConfigs {
+							tpmInstanceSettings, err := s.SyncController.SettingsFactory(n, k_last, l, m, noOverlapSettings.TpmType, rule)
 							if err != nil {
-								continue
+								fmt.Println("Error while creating settings for an instance: ", err)
+								return
 							}
+							workerPool.Go(func() { s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings) })
+						}
+					}
+				default:
+					var overlapSettings OverlappedSettings
 
-							workerPool.Go(func() {
-								startTime, ntpErr := s.getCurrentTimeFromNTP()
-								if ntpErr != nil {
-									startTime = time.Now()
-								}
-								token := s.generateToken(startTime, tpmSettings)
-								sessionBufferSize := 10
-								sessionChannel := make(chan SessionStateMessage, sessionBufferSize)
-								simulationData := OpenSession{
-									Uid:                 token,
-									Config:              tpmSettings,
-									StartTime:           startTime,
-									MaxSessionCount:     simSettings.MaxSessionCount,
-									CurrentSessionCount: 0,
-									CurrentStateChannel: sessionChannel,
-								}
-								sessionMap.Mutex.Lock()
-								sessionMap.Sessions[token] = &simulationData
-								sessionMap.Mutex.Unlock()
+					if err := json.Unmarshal(baseSettingsData, &overlapSettings); err != nil {
+						fmt.Println("Error unmarshalling overlapped settings:", err)
+					}
 
-								for i := 0; i < simSettings.MaxSessionCount; i++ {
-									startTime, ntpErr = s.getCurrentTimeFromNTP()
-									if ntpErr != nil {
-										startTime = time.Now()
-									}
-									seed := time.Now().UnixNano()
-									localRand := rand.New(rand.NewSource(seed))
-									sendIterThreshold := 10
-									sendIterStep := 100
-									session := s.SyncController.StartSyncSession(tpmSettings, sessionChannel, simSettings.MaxIterations, sendIterThreshold, sendIterStep, seed, localRand)
+					for _, k := range overlapSettings.KConfigs {
+						for _, n_0 := range overlapSettings.N0Configs {
+							tpmInstanceSettings, err := s.SyncController.SettingsFactory(k, n_0, l, m, overlapSettings.TpmType, rule)
+							if err != nil {
+								fmt.Println("Error while creating settings for an instance: ", err)
+								return
+							}
+							workerPool.Go(func() { s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings) })
 
-									endTime, ntpErr := s.getCurrentTimeFromNTP()
-									if ntpErr != nil {
-										endTime = time.Now()
-									}
-									s.DatabaseController.insertIntoDB(tpmSettings, session, startTime, endTime)
-									sessionMap.Mutex.Lock()
-									sessionMap.Sessions[token].CurrentSessionCount += 1
-									sessionMap.Mutex.Unlock()
-								}
-
-								sessionMap.Mutex.Lock()
-								delete(sessionMap.Sessions, token)
-								sessionMap.Mutex.Unlock()
-								close(sessionChannel)
-							})
 						}
 					}
 				}

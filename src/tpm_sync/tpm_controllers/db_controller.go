@@ -148,36 +148,38 @@ func (dc *DatabaseController) FetchFullTableAsJSON(tableName string) (string, er
 	return string(jsonData), nil
 }
 
-func (dc *DatabaseController) GetFullIterationStatsFromDB(tableName string) (IterationStatsResponse, error) {
-	fmt.Println("Querying iteration stats to DB...")
-	// Example queries for each surface graph
+// func (dc *DatabaseController) GetFullIterationStatsFromDB(tableName string) (IterationStatsResponse, error) {
+// 	fmt.Println("Querying iteration stats to DB...")
+// 	// Example queries for each surface graph
 
-	queries := map[string]IterationGroup{
-		"H_vs_N0": {X: "H", Y: "N0"},
-		"H_vs_L":  {X: "H", Y: "L"},
-		"D_vs_H":  {X: "D", Y: "H"},
-	}
-	graphResponse := IterationStatsResponse{Graphs: make(map[string][][]interface{})}
+// 	queries := map[string]IterationGroup{
+// 		"H_vs_N0": {X: "H", Y: "N0"},
+// 		"H_vs_L":  {X: "H", Y: "L"},
+// 		"D_vs_H":  {X: "D", Y: "H"},
+// 	}
+// 	graphResponse := IterationStatsResponse{Graphs: make(map[string][][]interface{})}
 
-	for name, query := range queries {
-		data, err := dc.QuerySurfaceGraph(query.X, query.Y, tableName)
-		if err != nil {
-			return graphResponse, err
-		}
-		// Store each graph data with its corresponding name
-		graphResponse.Graphs[name] = data
-	}
+// 	for name, query := range queries {
+// 		data, err := dc.QuerySurfaceGraph(query.X, query.Y, tableName)
+// 		if err != nil {
+// 			return graphResponse, err
+// 		}
+// 		// Store each graph data with its corresponding name
+// 		graphResponse.Graphs[name] = data
+// 	}
 
-	return graphResponse, nil
+// 	return graphResponse, nil
 
-}
+// }
 
 // QueryGraph performs the query and returns the data for the graph
-func (dc *DatabaseController) QuerySurfaceGraph(X string, Y string, tableName string) ([][]interface{}, error) {
+func (dc *DatabaseController) QuerySurfaceGraph(X string, Y string, tableName string, learnRule string, scenario string) ([][]interface{}, error) {
 	queryBody := fmt.Sprintf(`MIN(stimulate_iterations), MAX(stimulate_iterations), AVG(stimulate_iterations),
                   	MIN(learn_iterations), MAX(learn_iterations), AVG(learn_iterations)
             		FROM %s 
-            		WHERE status = 'FINISHED'`, tableName)
+            		WHERE status = 'FINISHED'
+					AND learn_rule = '%s'
+					AND tpm_type = '%s'`, tableName, learnRule, scenario)
 	query := fmt.Sprintf("SELECT %s, %s, %s GROUP BY %s, %s;", X, Y, queryBody, X, Y)
 	rows, err := dc.db.Query(query)
 	if err != nil {
@@ -275,4 +277,36 @@ func (dc *DatabaseController) GetSessionsByK(kValues []int, tableName string, tp
 	}
 
 	return &result, nil
+}
+
+func (dc *DatabaseController) ValidateGraphAxis(axis string) bool {
+
+	availableAxis := []string{"H", "N_0", "L", "DATA_SIZE"}
+	for _, item := range availableAxis {
+		if item == axis {
+			return true
+		}
+	}
+	return false
+}
+func (dc *DatabaseController) ValidateLearnRule(rule string) bool {
+
+	availableRules := []string{"HEBBIAN", "ANTI-HEBBIAN", "RANDOM-WALK"}
+	for _, item := range availableRules {
+		if item == rule {
+			return true
+		}
+	}
+	return false
+}
+
+func (dc *DatabaseController) ValidateScenario(rule string) bool {
+
+	availableRules := []string{"NO_OVERLAP", "FULLY_CONNECTED", "PARTIALLY_CONNECTED"}
+	for _, item := range availableRules {
+		if item == rule {
+			return true
+		}
+	}
+	return false
 }
