@@ -28,3 +28,15 @@ type SessionAvgsAndCounts struct {
 	FinishedCount          int     `json:"finished_count"`
 	UnfinishedCount        int     `json:"unfinished_count"`
 }
+
+type HistogramEntry struct {
+	RangeLabel    string
+	FinishedCount int
+	TotalCount    int
+	AvgLearn      float64
+	AvgStim       float64
+}
+
+// type SuccessIterationCorrelationData struct {
+// 	Histogram []HistogramEntry
+// }

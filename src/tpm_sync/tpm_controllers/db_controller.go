@@ -244,6 +244,56 @@ func (dc *DatabaseController) QueryFinishedCount(tableName string) ([]FinishedCo
 	return results, nil
 }
 
+func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, scenario, learnRule string, min, max, bucketCount int) []HistogramEntry {
+
+	bucketColumn := "tpm_type"
+	// bucketSubquery := dc.generateBucketSubquery(min, max, bucketCount, bucketColumn)
+
+	// conditionSubQuery := dc.generateConditionsSubquery(scenario, learnRule)
+
+	fmt.Println("Querying session count to DB...")
+	query := fmt.Sprintf(`
+	SELECT
+    	%s,
+		COUNT(CASE WHEN status = 'FINISHED' THEN 1 END) AS finished_count,
+		COUNT(*) AS total_count,
+		AVG(learn_iterations) as avg_learn,
+		AVG(stimulate_iterations) as avg_stim
+	FROM
+		%s
+	GROUP BY
+		%s
+		`, bucketColumn, tableName, bucketColumn)
+
+	rows, err := dc.db.Query(query)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return nil
+	}
+	defer rows.Close()
+
+	// Create a slice to hold the results
+	var results []HistogramEntry
+
+	// Iterate through the rows and scan the data into the struct
+	for rows.Next() {
+		var result HistogramEntry
+		if err := rows.Scan(&result.RangeLabel, &result.FinishedCount, &result.TotalCount, &result.AvgLearn, &result.AvgStim); err != nil {
+			fmt.Println("Error: ", err)
+			log.Fatal(err)
+		}
+		results = append(results, result)
+	}
+
+	// Check for any errors encountered during iteration
+	if err := rows.Err(); err != nil {
+		fmt.Println("Error: ", err)
+		log.Fatal(err)
+	}
+
+	return results
+}
+
 func (dc *DatabaseController) GetSessionsByK(kValues []int, tableName string, tpmType string) (*SessionAvgsAndCounts, error) {
 	// Convert kValues into a JSON array string for querying
 	jsonArray := make([]string, len(kValues))
@@ -281,7 +331,7 @@ func (dc *DatabaseController) GetSessionsByK(kValues []int, tableName string, tp
 
 func (dc *DatabaseController) ValidateGraphAxis(axis string) bool {
 
-	availableAxis := []string{"H", "N_0", "L", "DATA_SIZE"}
+	availableAxis := []string{"H", "N_0", "L", "DATA_SIZE", "M"}
 	for _, item := range availableAxis {
 		if item == axis {
 			return true
@@ -309,4 +359,59 @@ func (dc *DatabaseController) ValidateScenario(rule string) bool {
 		}
 	}
 	return false
+}
+
+// calculateBuckets calculates the optimal bucket size based on min, max, and bucketCount
+func (dc *DatabaseController) generateBucketSubquery(min, max, bucketCount int, tableColumn string) string {
+	// Calculate the range
+	rangeSize := max - min
+
+	// If rangeSize is 0 or bucketCount is too large, adjust the bucketCount
+	if rangeSize <= 0 {
+		return ""
+	}
+
+	// Calculate the bucket size based on the desired bucketCount
+	bucketSize := rangeSize / bucketCount
+	if bucketSize == 0 {
+		// If the bucket size is too small, adjust the bucketCount to the maximum possible number of buckets
+		bucketCount = rangeSize
+		bucketSize = 1
+	}
+
+	// Generate the bucket conditions for the CASE statement
+	var conditions []string
+
+	// Handle the first bucket (0 to min)
+	condition := fmt.Sprintf("WHEN %s BETWEEN %d AND %d THEN '%d-%d'", tableColumn, 0, min, 0, min)
+	conditions = append(conditions, condition)
+
+	// Iterate over the bucket ranges
+	for i := min; i < max; i += bucketSize {
+		upperBound := i + bucketSize - 1
+		if upperBound > max {
+			upperBound = max
+		}
+
+		// Create the bucket label and condition
+		condition := fmt.Sprintf("WHEN %s BETWEEN %d AND %d THEN '%d-%d'", tableColumn, i, upperBound, i, upperBound)
+		conditions = append(conditions, condition)
+	}
+
+	// Combine all conditions into a single CASE statement
+	return "CASE " + strings.Join(conditions, " ") + fmt.Sprintf(" ELSE '%d+' END AS %s_range", max, tableColumn)
+}
+
+func (dc *DatabaseController) generateConditionsSubquery(scenario, learnRule string) string {
+
+	output := ""
+	if dc.ValidateScenario(scenario) {
+		output = fmt.Sprintf("tpm_type = '%s'", scenario)
+	}
+
+	if dc.ValidateLearnRule(learnRule) {
+		output = fmt.Sprintf("%s AND learn_rule = '%s'", output, learnRule)
+	}
+
+	return output
 }

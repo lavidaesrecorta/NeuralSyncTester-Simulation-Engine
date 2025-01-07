@@ -6,11 +6,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"tpm_sync/tpm_controllers"
 
 	"github.com/joho/godotenv"
+	"github.com/sourcegraph/conc/pool"
 )
 
 var sessionMap = tpm_controllers.NewSessionMap()
@@ -38,9 +40,19 @@ func main() {
 
 	defer dbController.CloseDb()
 
+	MAX_GOROUTINES, err := strconv.Atoi(os.Getenv("MAX_GOROUTINES"))
+
+	if err != nil {
+		fmt.Println("Error while parsing MAX_GOROUTINES")
+		return
+	}
+
+	workerPool := pool.New().WithMaxGoroutines(MAX_GOROUTINES)
+
 	simController := tpm_controllers.SimulationController{
 		SyncController:     tpm_controllers.SyncController{},
 		DatabaseController: *dbController,
+		WorkerPool:         workerPool,
 	}
 
 	http.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
@@ -55,10 +67,22 @@ func main() {
 		get3DGraphHandler(w, r, dbController)
 	})
 
+	http.HandleFunc("/newNoOverlap", func(w http.ResponseWriter, r *http.Request) {
+		createNewNoOverlapSession(w, r, &simController)
+	})
+
+	http.HandleFunc("/newOverlap", func(w http.ResponseWriter, r *http.Request) {
+		createNewOverlapSession(w, r, &simController)
+	})
+
+	http.HandleFunc("/iterationHistogram", func(w http.ResponseWriter, r *http.Request) {
+		getIterationHistogram(w, r, dbController)
+	})
+
 	http.HandleFunc("/events", realTimeSessionHandler)
 	http.HandleFunc("/get-config", settingsByUidHandler)
 
-	go simController.SimulateOnStart(sessionMap)
+	// go simController.SimulateOnStart(sessionMap)
 
 	http.ListenAndServe(":8080", nil)
 
@@ -265,4 +289,150 @@ func get3DGraphHandler(w http.ResponseWriter, r *http.Request, dbController *tpm
 	// 	"message": fmt.Sprintf("Received X: %s, Y: %s", requestBody.X, requestBody.Y),
 	// }
 	json.NewEncoder(w).Encode(response)
+}
+
+type NewNoOverlapRequestBody struct {
+	N               []int
+	K_last          int
+	L               int
+	M               int
+	Rule            string
+	MaxSessionCount int
+	MaxIterations   int
+}
+
+func createNewNoOverlapSession(w http.ResponseWriter, r *http.Request, simController *tpm_controllers.SimulationController) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Decode the incoming JSON request body into the RequestBody struct
+	var requestBody NewNoOverlapRequestBody
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&requestBody)
+	if err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	tpmInstanceSettings, err := simController.SyncController.SettingsFactory(requestBody.N, requestBody.K_last, requestBody.L, requestBody.M, "NO_OVERLAP", requestBody.Rule)
+	if err != nil {
+		fmt.Println("Error while creating settings for an instance: ", err)
+		http.Error(w, "Error while creating settings for an instance", http.StatusInternalServerError)
+
+		return
+	}
+
+	baseSettings := tpm_controllers.BaseSettings{
+		TpmType:         "NO_OVERLAP",
+		MaxSessionCount: requestBody.MaxSessionCount,
+		MaxIterations:   requestBody.MaxIterations,
+		MaxWorkerCount:  1,
+		LearnRules:      []string{requestBody.Rule},
+		MConfigs:        []int{requestBody.M},
+		LConfigs:        []int{requestBody.L},
+	}
+
+	newSessionToken := simController.SimulateOnDemand(sessionMap, tpmInstanceSettings, baseSettings)
+
+	fmt.Println("Simulating on Demand:", newSessionToken)
+	// Send a response back with the received data
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{
+		"sessionToken": newSessionToken,
+	}
+	json.NewEncoder(w).Encode(response)
+
+}
+
+type NewOverlapRequestBody struct {
+	K               []int
+	N_0             int
+	L               int
+	M               int
+	Rule            string
+	MaxSessionCount int
+	MaxIterations   int
+	Scenario        string
+}
+
+func createNewOverlapSession(w http.ResponseWriter, r *http.Request, simController *tpm_controllers.SimulationController) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Decode the incoming JSON request body into the RequestBody struct
+	var requestBody NewOverlapRequestBody
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&requestBody)
+	if err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	tpmInstanceSettings, err := simController.SyncController.SettingsFactory(requestBody.K, requestBody.N_0, requestBody.L, requestBody.M, requestBody.Scenario, requestBody.Rule)
+	if err != nil {
+		fmt.Println("Error while creating settings for an instance: ", err)
+		http.Error(w, "Error while creating settings for an instance", http.StatusInternalServerError)
+
+		return
+	}
+
+	baseSettings := tpm_controllers.BaseSettings{
+		TpmType:         requestBody.Scenario,
+		MaxSessionCount: requestBody.MaxSessionCount,
+		MaxIterations:   requestBody.MaxIterations,
+		MaxWorkerCount:  1,
+		LearnRules:      []string{requestBody.Rule},
+		MConfigs:        []int{requestBody.M},
+		LConfigs:        []int{requestBody.L},
+	}
+
+	newSessionToken := simController.SimulateOnDemand(sessionMap, tpmInstanceSettings, baseSettings)
+
+	fmt.Println("Simulating on Demand:", newSessionToken)
+	// Send a response back with the received data
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{
+		"sessionToken": newSessionToken,
+	}
+	json.NewEncoder(w).Encode(response)
+
+}
+
+type SuccessIterationCorrelationRequestBody struct {
+	TableName   string
+	Scenario    string
+	LearnRule   string
+	Min         int
+	Max         int
+	BucketCount int
+}
+
+func getIterationHistogram(w http.ResponseWriter, r *http.Request, dbController *tpm_controllers.DatabaseController) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Decode the incoming JSON request body into the RequestBody struct
+	var requestBody SuccessIterationCorrelationRequestBody
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&requestBody)
+	if err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	histogram := dbController.QuerySuccessIterationCorrelation(requestBody.TableName, requestBody.Scenario, requestBody.LearnRule, requestBody.Min, requestBody.Max, requestBody.BucketCount)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	response := map[string][]tpm_controllers.HistogramEntry{
+		"histogram": histogram,
+	}
+	json.NewEncoder(w).Encode(response)
+
 }

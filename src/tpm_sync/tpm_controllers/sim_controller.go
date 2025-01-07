@@ -17,6 +17,7 @@ import (
 type SimulationController struct {
 	SyncController     SyncController
 	DatabaseController DatabaseController
+	WorkerPool         *pool.Pool
 }
 
 func ReadFile(filename string) ([]byte, error) {
@@ -69,7 +70,7 @@ func (s *SimulationController) LoadSimulationSettings(filename string) (interfac
 	return rawConfig, nil
 }
 
-func (s *SimulationController) SimulateInstance(sessionMap *SessionMap, tpmSettings TPMmSettings, simSettings BaseSettings) {
+func (s *SimulationController) SimulateInstance(sessionMap *SessionMap, tpmSettings TPMmSettings, simSettings BaseSettings) string {
 
 	startTime, ntpErr := s.getCurrentTimeFromNTP()
 	if ntpErr != nil {
@@ -93,35 +94,37 @@ func (s *SimulationController) SimulateInstance(sessionMap *SessionMap, tpmSetti
 	sessionMap.Sessions[token] = &simulationData
 	sessionMap.Mutex.Unlock()
 
-	for i := 0; i < simSettings.MaxSessionCount; i++ {
-		startTime, ntpErr = s.getCurrentTimeFromNTP()
-		if ntpErr != nil {
-			startTime = time.Now()
-		}
-		seed := time.Now().UnixNano()
-		localRand := rand.New(rand.NewSource(seed))
-		sendIterThreshold := 10
-		sendIterStep := 100
-		sessionMap.Mutex.RLock()
-		tracking := sessionMap.Sessions[token].Tracking
-		sessionMap.Mutex.RUnlock()
-		session := s.SyncController.StartSyncSession(tpmSettings, tracking, sessionChannel, enableTrackingChannel, simSettings.MaxIterations, sendIterThreshold, sendIterStep, seed, localRand)
+	s.WorkerPool.Go(func() {
 
-		endTime, ntpErr := s.getCurrentTimeFromNTP()
-		if ntpErr != nil {
-			endTime = time.Now()
+		for i := 0; i < simSettings.MaxSessionCount; i++ {
+			startTime, ntpErr = s.getCurrentTimeFromNTP()
+			if ntpErr != nil {
+				startTime = time.Now()
+			}
+			seed := time.Now().UnixNano()
+			localRand := rand.New(rand.NewSource(seed))
+			sendIterThreshold := 10
+			sendIterStep := 100
+			sessionMap.Mutex.RLock()
+			tracking := sessionMap.Sessions[token].Tracking
+			sessionMap.Mutex.RUnlock()
+			session := s.SyncController.StartSyncSession(tpmSettings, tracking, sessionChannel, enableTrackingChannel, simSettings.MaxIterations, sendIterThreshold, sendIterStep, seed, localRand)
+
+			endTime, ntpErr := s.getCurrentTimeFromNTP()
+			if ntpErr != nil {
+				endTime = time.Now()
+			}
+			s.DatabaseController.insertIntoDB(tpmSettings, session, startTime, endTime)
+			sessionMap.Mutex.Lock()
+			sessionMap.Sessions[token].CurrentSessionCount += 1
+			sessionMap.Mutex.Unlock()
 		}
-		s.DatabaseController.insertIntoDB(tpmSettings, session, startTime, endTime)
 		sessionMap.Mutex.Lock()
-		sessionMap.Sessions[token].CurrentSessionCount += 1
+		delete(sessionMap.Sessions, token)
 		sessionMap.Mutex.Unlock()
-	}
-
-	sessionMap.Mutex.Lock()
-	delete(sessionMap.Sessions, token)
-	sessionMap.Mutex.Unlock()
-	close(sessionChannel)
-
+		close(sessionChannel)
+	})
+	return token
 }
 
 func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
@@ -142,7 +145,6 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 	fmt.Println("Settings loaded:")
 	fmt.Println(baseSettings)
 
-	workerPool := pool.New().WithMaxGoroutines(baseSettings.MaxWorkerCount)
 	for _, rule := range baseSettings.LearnRules {
 		for _, m := range baseSettings.MConfigs {
 			for _, l := range baseSettings.LConfigs {
@@ -161,7 +163,7 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 								fmt.Println("Error while creating settings for an instance: ", err)
 								return
 							}
-							workerPool.Go(func() { s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings) })
+							s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings)
 						}
 					}
 				default:
@@ -178,7 +180,7 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 								fmt.Println("Error while creating settings for an instance: ", err)
 								return
 							}
-							workerPool.Go(func() { s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings) })
+							s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings)
 
 						}
 					}
@@ -186,8 +188,12 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 			}
 		}
 	}
-	workerPool.Wait()
+	s.WorkerPool.Wait()
 	fmt.Println("-- All automatic configs finished --")
+}
+
+func (s *SimulationController) SimulateOnDemand(sessionMap *SessionMap, tpmInstanceSettings TPMmSettings, baseSettings BaseSettings) string {
+	return s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings)
 }
 
 func (s *SimulationController) getCurrentTimeFromNTP() (time.Time, error) {
