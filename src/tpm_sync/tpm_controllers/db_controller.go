@@ -244,12 +244,9 @@ func (dc *DatabaseController) QueryFinishedCount(tableName string) ([]FinishedCo
 	return results, nil
 }
 
-func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, scenario, learnRule string, min, max, bucketCount int) []HistogramEntry {
+func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, bucketColumn, scenario, learnRule string) []HistogramEntry {
 
-	bucketColumn := "tpm_type"
-	// bucketSubquery := dc.generateBucketSubquery(min, max, bucketCount, bucketColumn)
-
-	// conditionSubQuery := dc.generateConditionsSubquery(scenario, learnRule)
+	conditionSubQuery := dc.generateConditionsSubquery(scenario, learnRule)
 
 	fmt.Println("Querying session count to DB...")
 	query := fmt.Sprintf(`
@@ -261,10 +258,11 @@ func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, scenar
 		AVG(stimulate_iterations) as avg_stim
 	FROM
 		%s
-	GROUP BY
-		%s
-		`, bucketColumn, tableName, bucketColumn)
+	%s
+	GROUP BY %s
+		`, bucketColumn, tableName, conditionSubQuery, bucketColumn)
 
+	fmt.Println(query)
 	rows, err := dc.db.Query(query)
 	if err != nil {
 		fmt.Println("Error: ", err)
@@ -406,11 +404,15 @@ func (dc *DatabaseController) generateConditionsSubquery(scenario, learnRule str
 
 	output := ""
 	if dc.ValidateScenario(scenario) {
-		output = fmt.Sprintf("tpm_type = '%s'", scenario)
+		output = fmt.Sprintf("WHERE tpm_type = '%s'", scenario)
 	}
 
 	if dc.ValidateLearnRule(learnRule) {
-		output = fmt.Sprintf("%s AND learn_rule = '%s'", output, learnRule)
+		if dc.ValidateScenario(scenario) {
+			output = fmt.Sprintf("%s AND learn_rule = '%s'", output, learnRule)
+		} else {
+			output = fmt.Sprintf("WHERE learn_rule = '%s'", learnRule)
+		}
 	}
 
 	return output
