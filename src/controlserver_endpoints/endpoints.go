@@ -405,12 +405,10 @@ func createNewOverlapSession(w http.ResponseWriter, r *http.Request, simControll
 }
 
 type SuccessIterationCorrelationRequestBody struct {
-	TableName   string
-	Scenario    string
-	LearnRule   string
-	Min         int
-	Max         int
-	BucketCount int
+	TableName    string
+	BucketColumn string
+	Scenario     string
+	LearnRule    string
 }
 
 func getIterationHistogram(w http.ResponseWriter, r *http.Request, dbController *tpm_controllers.DatabaseController) {
@@ -427,7 +425,7 @@ func getIterationHistogram(w http.ResponseWriter, r *http.Request, dbController 
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	histogram := dbController.QuerySuccessIterationCorrelation(requestBody.TableName, requestBody.Scenario, requestBody.LearnRule, requestBody.Min, requestBody.Max, requestBody.BucketCount)
+	histogram := dbController.QuerySuccessIterationCorrelation(requestBody.TableName, requestBody.BucketColumn, requestBody.Scenario, requestBody.LearnRule)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	response := map[string][]tpm_controllers.HistogramEntry{
