@@ -35,6 +35,7 @@ type HistogramEntry struct {
 	TotalCount    int
 	AvgLearn      float64
 	AvgStim       float64
+	AvgDataSize   float64
 }
 
 // type SuccessIterationCorrelationData struct {

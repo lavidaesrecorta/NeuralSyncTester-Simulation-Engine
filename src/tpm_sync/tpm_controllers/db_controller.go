@@ -244,9 +244,18 @@ func (dc *DatabaseController) QueryFinishedCount(tableName string) ([]FinishedCo
 	return results, nil
 }
 
-func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, bucketColumn, scenario, learnRule string) []HistogramEntry {
+func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, bucketColumn, scenario, learnRule string, countUnfinished, limitDataSize bool, maxDataSize, minDataSize int) []HistogramEntry {
 
-	conditionSubQuery := dc.generateConditionsSubquery(scenario, learnRule)
+	conditionSubQuery := dc.generateConditionsSubquery(scenario, learnRule, limitDataSize, maxDataSize, minDataSize)
+
+	learn_avg_condition := "CASE WHEN status = 'FINISHED' THEN learn_iterations ELSE 0 END"
+	stim_avg_condition := "CASE WHEN status = 'FINISHED' THEN stimulate_iterations ELSE 0 END"
+	datasize_avg_condition := "CASE WHEN status = 'FINISHED' THEN data_size ELSE 0 END"
+
+	if countUnfinished {
+		learn_avg_condition = "learn_iterations"
+		stim_avg_condition = "stimulate_iterations"
+	}
 
 	fmt.Println("Querying session count to DB...")
 	query := fmt.Sprintf(`
@@ -254,15 +263,15 @@ func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, bucket
     	%s,
 		COUNT(CASE WHEN status = 'FINISHED' THEN 1 END) AS finished_count,
 		COUNT(*) AS total_count,
-		AVG(learn_iterations) as avg_learn,
-		AVG(stimulate_iterations) as avg_stim
-	FROM
-		%s
+		AVG(%s) as avg_learn,
+		AVG(%s) as avg_stim,
+		AVG(%s) as avg_datasize
+	FROM %s
 	%s
 	GROUP BY %s
-		`, bucketColumn, tableName, conditionSubQuery, bucketColumn)
+		`, bucketColumn, learn_avg_condition, stim_avg_condition, datasize_avg_condition, tableName, conditionSubQuery, bucketColumn)
 
-	fmt.Println(query)
+	// fmt.Println(query)
 	rows, err := dc.db.Query(query)
 	if err != nil {
 		fmt.Println("Error: ", err)
@@ -276,7 +285,7 @@ func (dc *DatabaseController) QuerySuccessIterationCorrelation(tableName, bucket
 	// Iterate through the rows and scan the data into the struct
 	for rows.Next() {
 		var result HistogramEntry
-		if err := rows.Scan(&result.RangeLabel, &result.FinishedCount, &result.TotalCount, &result.AvgLearn, &result.AvgStim); err != nil {
+		if err := rows.Scan(&result.RangeLabel, &result.FinishedCount, &result.TotalCount, &result.AvgLearn, &result.AvgStim, &result.AvgDataSize); err != nil {
 			fmt.Println("Error: ", err)
 			log.Fatal(err)
 		}
@@ -400,7 +409,7 @@ func (dc *DatabaseController) generateBucketSubquery(min, max, bucketCount int, 
 	return "CASE " + strings.Join(conditions, " ") + fmt.Sprintf(" ELSE '%d+' END AS %s_range", max, tableColumn)
 }
 
-func (dc *DatabaseController) generateConditionsSubquery(scenario, learnRule string) string {
+func (dc *DatabaseController) generateConditionsSubquery(scenario, learnRule string, limitDataSize bool, maxDataSize, minDataSize int) string {
 
 	output := ""
 	if dc.ValidateScenario(scenario) {
@@ -412,6 +421,14 @@ func (dc *DatabaseController) generateConditionsSubquery(scenario, learnRule str
 			output = fmt.Sprintf("%s AND learn_rule = '%s'", output, learnRule)
 		} else {
 			output = fmt.Sprintf("WHERE learn_rule = '%s'", learnRule)
+		}
+	}
+
+	if minDataSize <= maxDataSize && limitDataSize {
+		if output != "" {
+			output = fmt.Sprintf("%s AND data_size BETWEEN %d AND %d", output, minDataSize, maxDataSize)
+		} else {
+			output = fmt.Sprintf("WHERE data_size BETWEEN %d AND %d", minDataSize, maxDataSize)
 		}
 	}
 
