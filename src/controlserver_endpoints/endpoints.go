@@ -82,7 +82,7 @@ func main() {
 	http.HandleFunc("/events", realTimeSessionHandler)
 	http.HandleFunc("/get-config", settingsByUidHandler)
 
-	// go simController.SimulateOnStart(sessionMap)
+	go simController.SimulateOnStart(sessionMap)
 
 	http.ListenAndServe(":8080", nil)
 
