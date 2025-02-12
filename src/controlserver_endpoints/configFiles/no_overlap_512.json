@@ -1,0 +1,20 @@
+{
+    "tpm_type": "no_overlap",
+    "max_session_count": 100,
+    "max_iterations": 1000000,
+    "max_worker_count": 4,
+    "m_configs": [1],
+    "l_configs": [3],
+    "learn_rules": [
+        "Hebbian",
+        "Anti-Hebbian",
+        "Random-Walk"
+  ],
+    "n_configs": [
+        [3,8],
+        [7,4],
+        [2,5,2],
+        [4,3,2]
+    ],
+    "k_configs": [2]
+}

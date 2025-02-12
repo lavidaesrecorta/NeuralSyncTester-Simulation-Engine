@@ -1,0 +1,19 @@
+{
+    "tpm_type": "fully_connected",
+    "max_session_count": 100,
+    "max_iterations": 1000000,
+    "max_worker_count": 4,
+    "m_configs": [1],
+    "l_configs": [3],
+    "learn_rules": [
+        "Hebbian",
+        "Anti-Hebbian",
+        "Random-Walk"
+    ], 
+    "n0_configs": [9],
+    "k_configs": [
+        [8,7],
+        [16,7],
+        [16,5,4,3]
+    ]
+}

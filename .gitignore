@@ -1,3 +1,5 @@
 .env
 /mysql
 /src/quicktest
+/src/testSizes
+simulation_settings.json
