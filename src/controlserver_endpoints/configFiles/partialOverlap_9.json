@@ -3,8 +3,8 @@
     "max_session_count": 100,
     "max_iterations": 1000000,
     "max_worker_count": 4,
-    "m_configs": [1],
-    "l_configs": [3],
+    "m_configs": [1,2,3,4,5],
+    "l_configs": [3,4,5,6],
     "learn_rules": [
         "Hebbian",
         "Anti-Hebbian",
