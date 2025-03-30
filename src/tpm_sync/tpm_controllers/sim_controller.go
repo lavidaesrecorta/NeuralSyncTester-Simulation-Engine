@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -190,6 +191,85 @@ func (s *SimulationController) SimulateOnStart(sessionMap *SessionMap) {
 	}
 	s.WorkerPool.Wait()
 	fmt.Println("-- All automatic configs finished --")
+}
+
+func (s *SimulationController) SimulateMultipleFiles(sessionMap *SessionMap, configFileDirectory string) {
+
+	files, err := os.ReadDir(configFileDirectory)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, file := range files {
+		fmt.Printf("Reading config file: %s\n", file.Name())
+
+		rawConfig, err := s.LoadSimulationSettings(filepath.Join(configFileDirectory, file.Name()))
+		if err != nil {
+			fmt.Printf("Error loading base settings for file %s: %s", file.Name(), err)
+			continue
+		}
+		// Initialize a variable for the base settings
+		var baseSettings BaseSettings
+		baseSettingsData, _ := json.Marshal(rawConfig)
+
+		if err := json.Unmarshal(baseSettingsData, &baseSettings); err != nil {
+			fmt.Printf("Error unmarshalling base settings for file %s: %s", file.Name(), err)
+			continue
+		}
+
+		fmt.Printf("%s Settings loaded: \n", file.Name())
+		fmt.Println(baseSettings)
+
+		for _, rule := range baseSettings.LearnRules {
+			for _, m := range baseSettings.MConfigs {
+				for _, l := range baseSettings.LConfigs {
+					switch strings.ToUpper(baseSettings.TpmType) {
+					case "NO_OVERLAP":
+						var noOverlapSettings NonOverlappedSettings
+
+						if err := json.Unmarshal(baseSettingsData, &noOverlapSettings); err != nil {
+							fmt.Printf("Error unmarshalling noOverlap settings for file %s: %s\n", file.Name(), err)
+							continue
+						}
+
+						for _, n := range noOverlapSettings.NConfigs {
+							for _, k_last := range noOverlapSettings.KlastConfigs {
+								tpmInstanceSettings, err := s.SyncController.SettingsFactory(n, k_last, l, m, noOverlapSettings.TpmType, rule)
+								if err != nil {
+									fmt.Printf("Error while creating settings for an instance for file %s: %s \n", file.Name(), err)
+									continue
+								}
+								s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings)
+							}
+						}
+					default:
+						var overlapSettings OverlappedSettings
+
+						if err := json.Unmarshal(baseSettingsData, &overlapSettings); err != nil {
+							fmt.Printf("Error unmarshalling overlapped settings for file %s: %s\n", file.Name(), err)
+						}
+
+						for _, k := range overlapSettings.KConfigs {
+							for _, n_0 := range overlapSettings.N0Configs {
+								tpmInstanceSettings, err := s.SyncController.SettingsFactory(k, n_0, l, m, overlapSettings.TpmType, rule)
+								if err != nil {
+									fmt.Printf("Error while creating settings for an instance for file %s: %s \n", file.Name(), err)
+									continue
+								}
+								s.SimulateInstance(sessionMap, tpmInstanceSettings, baseSettings)
+
+							}
+						}
+					}
+				}
+			}
+		}
+		// fmt.Printf("-- All automatic configs finished for file %s --\n", file.Name())
+	}
+	s.WorkerPool.Wait()
+	fmt.Printf("-- All automatic configs finished for all files --\n")
+
 }
 
 func (s *SimulationController) SimulateOnDemand(sessionMap *SessionMap, tpmInstanceSettings TPMmSettings, baseSettings BaseSettings) string {
