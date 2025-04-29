@@ -22,7 +22,7 @@ func NeuronLocalField(n int, w_k []int, stim_k []int) float64 {
 	for i := 0; i < n; i++ {
 		dot_prod += w_k[i] * stim_k[i]
 	}
-	return float64(dot_prod) * (float64(n))
+	return float64(dot_prod) * FastInverseSqrt(float64(n))
 }
 
 func OutputSigma(x float64) int {

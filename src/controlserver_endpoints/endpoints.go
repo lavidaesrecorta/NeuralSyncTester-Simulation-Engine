@@ -82,7 +82,25 @@ func main() {
 	http.HandleFunc("/events", realTimeSessionHandler)
 	http.HandleFunc("/get-config", settingsByUidHandler)
 
-	go simController.SimulateOnStart(sessionMap)
+	enableAutoSimEnv, ok := os.LookupEnv("ENABLE_AUTOMATIC_SIM")
+
+	if ok {
+		enableAutoSim, err := strconv.ParseBool(enableAutoSimEnv)
+		if err != nil {
+			fmt.Println("ERROR: Could not parse ENABLE_AUTOMATIC_SIM as boolean")
+			return
+		}
+		if enableAutoSim {
+			configDir, ok := os.LookupEnv("CONFIG_DIRECTORY")
+
+			fmt.Println("ConfigDir: ", configDir)
+			if !ok {
+				fmt.Println("ERROR: Could not read CONFIG_DIRECTORY, using default directory [./configFiles]")
+				configDir = "./configFiles"
+			}
+			go simController.SimulateMultipleFiles(sessionMap, configDir)
+		}
+	}
 
 	http.ListenAndServe(":8080", nil)
 
